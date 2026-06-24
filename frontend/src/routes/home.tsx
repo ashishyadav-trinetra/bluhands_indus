@@ -1,0 +1,759 @@
+import React from "react";
+import { PrefetchPageLinks, useNavigate } from "react-router";
+import { useSettings } from "#/hooks/query/use-settings";
+import { useGitUser } from "#/hooks/query/use-git-user";
+import { usePaginatedConversations } from "#/hooks/query/use-paginated-conversations";
+import { useCreateConversation } from "#/hooks/mutation/use-create-conversation";
+import { useAppMode } from "#/hooks/use-app-mode";
+import { HomepageCTA } from "#/components/features/home/homepage-cta";
+import { isCTADismissed } from "#/utils/local-storage";
+import { useForgeMe } from "#/hooks/query/use-forge-me";
+import { useForgeTenants } from "#/hooks/query/use-forge-tenant";
+import { useStartBuild } from "#/hooks/mutation/use-start-build";
+import { useDeleteConversation } from "#/hooks/mutation/use-delete-conversation";
+
+// ─── Clarification questions shown before creating a conversation ──────────────
+interface ClarifyQuestion {
+  id: string;
+  label: string;
+  options: string[];
+}
+
+const CLARIFY_QUESTIONS: ClarifyQuestion[] = [
+  {
+    id: "type",
+    label: "What are you building?",
+    options: ["Web app / SaaS", "Landing page", "REST API / Backend", "Dashboard", "E-commerce", "Something else"],
+  },
+  {
+    id: "style",
+    label: "Pick a vibe",
+    options: ["Clean & minimal", "Bold & modern", "Corporate / professional", "Fun & playful"],
+  },
+  {
+    id: "tech",
+    label: "Technology preference",
+    options: ["Let the agent decide", "React + Tailwind", "Vue / Nuxt", "Plain HTML/CSS/JS", "Node + Express"],
+  },
+  {
+    id: "priority",
+    label: "Top priority",
+    options: ["Ship fast", "Pixel-perfect design", "Scalable architecture", "Mobile-first"],
+  },
+];
+
+function buildEnrichedPrompt(
+  base: string,
+  answers: Record<string, string>,
+): string {
+  const parts: string[] = [base.trim()];
+  if (answers.type && answers.type !== "Something else")
+    parts.push(`Project type: ${answers.type}.`);
+  if (answers.style)
+    parts.push(`Design style: ${answers.style}.`);
+  if (answers.tech && answers.tech !== "Let the agent decide")
+    parts.push(`Tech stack: ${answers.tech}.`);
+  if (answers.priority)
+    parts.push(`Priority: ${answers.priority}.`);
+  parts.push(
+    "Bind the server to 0.0.0.0 (not localhost) and use port 8011 so it is reachable externally. Use relative asset paths (e.g. ./assets/) not leading slashes.",
+  );
+  return parts.join("\n");
+}
+
+// ─── Clarification overlay component ──────────────────────────────────────────
+interface ClarifyOverlayProps {
+  prompt: string;
+  onConfirm: (enrichedPrompt: string) => void;
+  onBack: () => void;
+  isPending: boolean;
+}
+
+function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlayProps) {
+  const [answers, setAnswers] = React.useState<Record<string, string>>({});
+  const [activeQ, setActiveQ] = React.useState(0);
+
+  const pick = (qId: string, option: string) => {
+    const next = { ...answers, [qId]: option };
+    setAnswers(next);
+    if (activeQ < CLARIFY_QUESTIONS.length - 1) {
+      setTimeout(() => setActiveQ((a) => a + 1), 220);
+    }
+  };
+
+  const allAnswered = CLARIFY_QUESTIONS.every((q) => answers[q.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onBack} />
+
+      <div
+        className="relative w-full max-w-[560px] bg-[#0d0f14] border border-[#2a2d37] rounded-2xl shadow-2xl overflow-hidden"
+        style={{ boxShadow: "0 0 60px rgba(59,130,246,0.12)" }}
+      >
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b border-[#1e2028]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs text-[#3b82f6] font-medium uppercase tracking-wider mb-1">Quick questions</p>
+              <h2 className="text-white font-semibold text-base leading-snug">
+                Let&apos;s tailor this for you
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-[#555] hover:text-white transition-colors mt-0.5 shrink-0"
+              aria-label="Back"
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 8h8M4 8l3-3M4 8l3 3" />
+              </svg>
+            </button>
+          </div>
+          {/* Prompt preview */}
+          <p className="mt-3 text-xs text-[#666] bg-[#111318] rounded-lg px-3 py-2 border border-[#1e2028] line-clamp-2">
+            &ldquo;{prompt}&rdquo;
+          </p>
+        </div>
+
+        {/* Questions */}
+        <div className="px-6 py-5 space-y-5">
+          {CLARIFY_QUESTIONS.map((q, qi) => {
+            const isActive = qi <= activeQ || !!answers[q.id];
+            return (
+              <div
+                key={q.id}
+                className="transition-all duration-300"
+                style={{ opacity: isActive ? 1 : 0.35 }}
+              >
+                <p className="text-[13px] font-medium text-[#c8cdd6] mb-2.5 flex items-center gap-2">
+                  {answers[q.id] ? (
+                    <span className="w-4 h-4 rounded-full bg-[#3b82f6] flex items-center justify-center shrink-0">
+                      <svg width="8" height="8" fill="none" stroke="white" strokeWidth="2.5">
+                        <path d="M1 4l2 2 4-4" />
+                      </svg>
+                    </span>
+                  ) : (
+                    <span className="w-4 h-4 rounded-full border border-[#3b82f6]/40 flex items-center justify-center shrink-0 text-[10px] text-[#3b82f6]">
+                      {qi + 1}
+                    </span>
+                  )}
+                  {q.label}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {q.options.map((opt) => {
+                    const selected = answers[q.id] === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        disabled={!isActive || isPending}
+                        onClick={() => pick(q.id, opt)}
+                        className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all duration-150 cursor-pointer
+                          ${selected
+                            ? "bg-[#3b82f6]/15 border-[#3b82f6]/60 text-[#60a5fa] font-medium"
+                            : "bg-[#111318] border-[#2a2d37] text-[#9099ac] hover:border-[#3b82f6]/40 hover:text-white"
+                          }
+                          disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-[13px] text-[#666] hover:text-white transition-colors"
+          >
+            ← Edit prompt
+          </button>
+          <button
+            type="button"
+            disabled={!allAnswered || isPending}
+            onClick={() => onConfirm(buildEnrichedPrompt(prompt, answers))}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-30 disabled:cursor-not-allowed text-white text-[13px] font-medium transition-colors"
+          >
+            {isPending ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Starting…
+              </>
+            ) : (
+              <>
+                Start building
+                <svg width="13" height="13" fill="none" stroke="white" strokeWidth="2.5">
+                  <path d="M2 6.5h9M8 3l3 3.5-3 3.5" />
+                </svg>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Progress dots */}
+        <div className="flex justify-center gap-1.5 pb-4">
+          {CLARIFY_QUESTIONS.map((q, qi) => (
+            <div
+              key={q.id}
+              className={`h-1 rounded-full transition-all duration-300 ${
+                answers[q.id] ? "w-4 bg-[#3b82f6]" : qi === activeQ ? "w-2 bg-[#3b82f6]/50" : "w-1.5 bg-[#2a2d37]"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+<PrefetchPageLinks page="/conversations/:conversationId" />;
+
+const STARTER_PROMPTS = [
+  {
+    icon: "🚀",
+    title: "Landing page",
+    prompt:
+      "Create a modern landing page with a hero section, features grid, testimonials, and a CTA. Use React with Tailwind CSS. Make it responsive. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "🛍️",
+    title: "E-commerce store",
+    prompt:
+      "Build an e-commerce store with a product catalog, shopping cart, and checkout page. Use Node.js with Express and Tailwind CSS. No payment processing yet. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "📊",
+    title: "Dashboard",
+    prompt:
+      "Create an analytics dashboard with charts, stat cards, and a sidebar navigation. Use React with Tailwind CSS and Recharts for the charts. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "⚡",
+    title: "REST API",
+    prompt:
+      "Build a REST API with Express.js and a SQLite database. Include user CRUD endpoints, authentication middleware, and proper error handling. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "✨",
+    title: "Portfolio site",
+    prompt:
+      "Build a personal portfolio website with an about section, project showcase, skills, and contact form. Use a clean modern design with Tailwind CSS. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "🏗️",
+    title: "Full-stack app",
+    prompt:
+      "Build a full-stack todo app with a React frontend, Express backend, and a SQLite database. Include user authentication, CRUD operations. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "💬",
+    title: "Chat app",
+    prompt:
+      "Build a real-time chat application with WebSocket support, user nicknames, message history, and a clean modern UI. Use Node.js with Express and Socket.io. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+  {
+    icon: "📝",
+    title: "Blog platform",
+    prompt:
+      "Build a blog platform with markdown support, post listing, individual post pages, and a clean reading experience. Use Node.js with Express and Tailwind CSS. Use port 8011 and bind to 0.0.0.0 (not localhost) for the server so it is accessible externally.",
+  },
+];
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+function HomeScreen() {
+  const navigate = useNavigate();
+  const { isEnterpriseCloud } = useAppMode();
+  const { data: settings } = useSettings();
+  const user = useGitUser();
+  const { data: conversationData } = usePaginatedConversations();
+  const { mutate: createConversation, isPending: isConversationPending } = useCreateConversation();
+
+  // ── Forge (BluHands control-plane) ────────────────────────────────────────
+  const { data: forgeMe } = useForgeMe();
+  const forgeOrgId = forgeMe?.memberships[0]?.org_id;
+  const { data: forgeTenants } = useForgeTenants(forgeOrgId);
+  const forgeTenant = forgeTenants?.[0] ?? null;
+  const { mutate: startBuild, isPending: isBuildPending } = useStartBuild();
+  const { mutate: deleteConversation } = useDeleteConversation();
+
+  const isPending = isBuildPending || isConversationPending;
+
+  const conversations =
+    conversationData?.pages.flatMap((page) => page.items) ?? [];
+  const recentConversations = conversations.slice(0, 6);
+
+  const [shouldShowCTA, setShouldShowCTA] = React.useState(
+    () => !isCTADismissed("homepage"),
+  );
+
+  const [promptValue, setPromptValue] = React.useState("");
+  const [attachedImages, setAttachedImages] = React.useState<File[]>([]);
+  const [showModelMenu, setShowModelMenu] = React.useState(false);
+  const [clarifyPrompt, setClarifyPrompt] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const userName = settings?.git_user_name || user.data?.login || "there";
+  const firstName = userName.split(" ")[0];
+
+  // Extract current model display name
+  const currentModel = settings?.llm_model || "gemini-2.0-flash";
+  const modelShortName =
+    currentModel.split("/").pop()?.split(":")[0] || currentModel;
+
+  const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { files } = e.target;
+    if (files) {
+      setAttachedImages((prev) => [...prev, ...Array.from(files)]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeImage = (index: number) => {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Called with the final (possibly enriched) prompt.
+  // If the user has a forge tenant, creates a control-plane build and navigates
+  // to the build progress page. Otherwise falls back to an OpenHands conversation.
+  const handleCreateWithPrompt = (prompt: string) => {
+    if (isPending) return;
+    if (forgeTenant && forgeOrgId) {
+      startBuild(
+        { orgId: forgeOrgId, tenantId: forgeTenant.id, prompt },
+        {
+          onSuccess: (build) =>
+            navigate(`/forge/build/${forgeOrgId}/${forgeTenant.id}/${build.id}`),
+        },
+      );
+    } else if (forgeOrgId && forgeTenants?.length === 0) {
+      // Org exists but no tenant yet — send to industry setup.
+      navigate("/forge/setup");
+    } else {
+      createConversation(
+        { query: prompt },
+        {
+          onSuccess: (data) => navigate(`/conversations/${data.conversation_id}`),
+        },
+      );
+    }
+  };
+
+  // Starter chips bypass clarification and go straight to create.
+  const handleStarterClick = (prompt: string) => {
+    if (isPending) return;
+    handleCreateWithPrompt(prompt);
+  };
+
+  // Main submit: show clarification overlay instead of creating immediately.
+  const handlePromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = promptValue.trim();
+    if (trimmed) {
+      setClarifyPrompt(trimmed);
+    }
+  };
+
+  return (
+    <div
+      data-testid="home-screen"
+      className="h-full flex flex-col overflow-y-auto custom-scrollbar-always relative"
+    >
+      {/* Gradient backdrop */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `
+            radial-gradient(ellipse 100% 80% at 50% -20%, rgba(59, 130, 246, 0.35) 0%, transparent 50%),
+            radial-gradient(ellipse 70% 60% at 90% 15%, rgba(168, 85, 247, 0.25) 0%, transparent 50%),
+            radial-gradient(ellipse 80% 60% at 10% 60%, rgba(59, 130, 246, 0.18) 0%, transparent 50%),
+            radial-gradient(ellipse 60% 50% at 70% 95%, rgba(236, 72, 153, 0.20) 0%, transparent 50%)
+          `,
+        }}
+      />
+
+      {/* Content — centered vertically with prompt as hero */}
+      <div className="relative z-10 flex flex-col items-center w-full max-w-[720px] mx-auto px-6">
+        {/* Spacer to push content to ~40% from top */}
+        <div className="h-[20vh]" />
+
+        {/* Logo */}
+        <div className="w-14 h-14 rounded-2xl overflow-hidden mb-6 shadow-lg shadow-[#3b82f6]/20">
+          <img
+            src="/blu-hands-logo.png.png"
+            alt="Blu Hands"
+            className="w-full h-full object-cover"
+          />
+        </div>
+
+        {/* Greeting */}
+        <h1 className="text-[32px] font-semibold text-white mb-2 text-center">
+          Let&apos;s build something,{" "}
+          <span className="bg-gradient-to-r from-[#3b82f6] to-[#a855f7] bg-clip-text text-transparent">
+            {firstName}
+          </span>
+        </h1>
+        <p className="text-sm text-[#666] mb-8 text-center">
+          Describe your project or pick a starter below
+        </p>
+
+        {/* Industry setup nudge — shown once before a tenant exists */}
+        {forgeOrgId && forgeTenants?.length === 0 && (
+          <button
+            type="button"
+            onClick={() => navigate("/forge/setup")}
+            className="w-full mb-5 flex items-center justify-between px-5 py-3.5 rounded-xl border border-[#3b82f6]/30 bg-[#3b82f6]/8 hover:bg-[#3b82f6]/12 transition-colors text-left"
+          >
+            <div>
+              <p className="text-sm font-medium text-white">Set up your industry</p>
+              <p className="text-xs text-[#666] mt-0.5">
+                Pick your industry so BluHands can wire the right backend for you.
+              </p>
+            </div>
+            <svg width="14" height="14" fill="none" stroke="#3b82f6" strokeWidth="2.5" className="shrink-0 ml-4">
+              <path d="M2 7h10M8 3l4 4-4 4" />
+            </svg>
+          </button>
+        )}
+
+        {/* Prompt bar — the hero element */}
+        <form onSubmit={handlePromptSubmit} className="w-full mb-8">
+          <div className="bg-[#111318]/80 border border-[#2a2d37] rounded-2xl focus-within:border-[#3b82f6]/40 transition-colors">
+            {/* Image previews */}
+            {attachedImages.length > 0 && (
+              <div className="flex gap-2 px-4 pt-3 flex-wrap">
+                {attachedImages.map((img, i) => (
+                  <div key={i} className="relative group">
+                    <img
+                      src={URL.createObjectURL(img)}
+                      alt="attached"
+                      className="w-16 h-16 rounded-lg object-cover border border-[#2a2d37]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#333] hover:bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <svg width="8" height="8" stroke="white" strokeWidth="2">
+                        <path d="M1 1l6 6M7 1l-6 6" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Input row */}
+            <div className="flex items-center px-5 py-3">
+              <input
+                type="text"
+                placeholder="Ask Blu Hands to build something..."
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && promptValue.trim() && !isPending) {
+                    e.preventDefault();
+                    setClarifyPrompt(promptValue.trim());
+                  }
+                }}
+                className="flex-1 bg-transparent text-sm text-white placeholder-[#555] outline-none"
+                disabled={isPending}
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={isPending || !promptValue.trim()}
+                className="ml-3 w-9 h-9 rounded-full bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0"
+              >
+                {isPending ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <svg
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M2 7h10M8 3l4 4-4 4" />
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            {/* Bottom toolbar: + attach, model selector */}
+            <div className="flex items-center justify-between px-4 pb-3 pt-0">
+              {/* Attach image */}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageAttach}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-7 h-7 rounded-lg border border-[#2a2d37] hover:border-[#3b82f6]/40 hover:bg-[#1e2028] flex items-center justify-center text-[#666] hover:text-white transition-all"
+                  title="Attach image"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M7 3v8M3 7h8" />
+                  </svg>
+                </button>
+                {attachedImages.length > 0 && (
+                  <span className="text-[11px] text-[#555]">
+                    {attachedImages.length} image
+                    {attachedImages.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+
+              {/* Model selector */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowModelMenu(!showModelMenu)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#2a2d37] hover:border-[#3b82f6]/40 text-[11px] text-[#888] hover:text-white transition-all"
+                >
+                  <span className="truncate max-w-[140px]">
+                    {modelShortName}
+                  </span>
+                  <svg
+                    width="10"
+                    height="10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M2.5 4L5 6.5 7.5 4" />
+                  </svg>
+                </button>
+
+                {showModelMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowModelMenu(false)}
+                    />
+                    <div className="absolute bottom-full right-0 mb-2 w-[220px] bg-[#111318] border border-[#2a2d37] rounded-xl p-2 z-50 shadow-xl">
+                      <p className="text-[10px] text-[#555] uppercase tracking-wider px-2 py-1 mb-1">
+                        Switch model
+                      </p>
+                      {[
+                        "google/gemini-2.0-flash-001:free",
+                        "qwen/qwen3-235b-a22b:free",
+                        "meta-llama/llama-4-maverick:free",
+                        "openai/gpt-4o",
+                        "anthropic/claude-sonnet-4-5-20250929",
+                      ].map((model) => {
+                        const name =
+                          model.split("/").pop()?.split(":")[0] || model;
+                        const isFree = model.includes(":free");
+                        const isActive = currentModel === model;
+                        return (
+                          <button
+                            key={model}
+                            type="button"
+                            onClick={() => {
+                              // Navigate to settings to change model
+                              navigate("/settings");
+                              setShowModelMenu(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs text-left transition-colors ${
+                              isActive
+                                ? "bg-[#3b82f6]/15 text-[#60a5fa]"
+                                : "text-[#9099ac] hover:bg-[#1e2028] hover:text-white"
+                            }`}
+                          >
+                            <span className="truncate">{name}</span>
+                            {isFree && (
+                              <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded shrink-0 ml-2">
+                                free
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      <div className="border-t border-[#2a2d37] mt-1 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate("/settings");
+                            setShowModelMenu(false);
+                          }}
+                          className="w-full px-2.5 py-2 rounded-lg text-xs text-[#3b82f6] hover:bg-[#1e2028] text-left transition-colors"
+                        >
+                          All models & API keys →
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </form>
+
+        {/* Starters — horizontal scroll, single row */}
+        <div className="w-full mb-4">
+          <div
+            className="flex gap-2.5 overflow-x-auto pb-2 custom-scrollbar"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {STARTER_PROMPTS.map((starter) => (
+              <button
+                key={starter.title}
+                type="button"
+                onClick={() => handleStarterClick(starter.prompt)}
+                disabled={isPending}
+                className="group shrink-0 border border-[#2a2d37]/60 rounded-xl bg-[#111318]/50 hover:bg-[#1a1c22]/80 hover:border-[#3b82f6]/30 disabled:opacity-50 flex items-center gap-2.5 px-4 py-3 text-left transition-all duration-200 cursor-pointer"
+              >
+                <span className="text-lg">{starter.icon}</span>
+                <span className="text-[13px] font-medium text-[#9099ac] group-hover:text-white whitespace-nowrap transition-colors">
+                  {starter.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Spacer — panel appears below the fold */}
+        <div className="h-[28vh]" />
+
+        {/* Projects panel — Lovable-style tabbed section */}
+        <div className="w-full pb-12">
+          <div className="rounded-2xl border border-white/[0.06] bg-[#0f1014] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-white/[0.04]">
+              <span className="text-[12px] font-medium text-[#e2e8f0]">My projects</span>
+              {recentConversations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/conversations")}
+                  className="flex items-center gap-1 text-[11px] text-[#3b4250] hover:text-[#64748b] transition-colors"
+                >
+                  Browse all
+                  <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 5h6M6 2l3 3-3 3" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="p-4">
+              {recentConversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <svg width="32" height="32" fill="none" viewBox="0 0 32 32" className="opacity-[0.08]">
+                    <rect x="4" y="4" width="24" height="24" rx="4" stroke="#9ca3af" strokeWidth="1.5" />
+                    <path d="M10 16h12M16 10v12" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  <p className="text-[12px] text-[#2d3340]">No projects yet — start building above</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {recentConversations.map((conversation) => (
+                    <div
+                      key={conversation.id}
+                      className="group relative rounded-xl border border-white/[0.05] bg-[#111318] hover:border-white/[0.09] hover:bg-[#141720] transition-all duration-150 overflow-hidden"
+                    >
+                      {/* Card body — navigates to conversation */}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/conversations/${conversation.id}`)}
+                        className="w-full text-left"
+                      >
+                        <div className="aspect-[16/9] bg-[#0c0e13] flex items-center justify-center border-b border-white/[0.04]">
+                          <svg width="28" height="28" fill="none" viewBox="0 0 28 28" className="opacity-[0.12]">
+                            <rect x="3" y="5" width="22" height="15" rx="2" stroke="#9ca3af" strokeWidth="1.4" />
+                            <path d="M9 23h10" stroke="#9ca3af" strokeWidth="1.4" strokeLinecap="round" />
+                            <path d="M14 20v3" stroke="#9ca3af" strokeWidth="1.4" strokeLinecap="round" />
+                          </svg>
+                        </div>
+                        <div className="px-3 py-2.5 pr-8">
+                          <p className="text-[12px] font-medium text-[#cbd5e1] group-hover:text-white truncate transition-colors">
+                            {conversation.title || "Untitled"}
+                          </p>
+                          <p className="text-[10px] text-[#2d3340] mt-0.5">
+                            {conversation.updated_at ? formatRelativeTime(conversation.updated_at) : ""}
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* Delete button — appears on hover */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteConversation({ conversationId: conversation.id });
+                        }}
+                        className="absolute top-2 right-2 w-6 h-6 rounded-md bg-[#1a1c22] border border-white/[0.06] flex items-center justify-center text-[#444] hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all duration-150"
+                        title="Delete project"
+                        aria-label="Delete project"
+                      >
+                        <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                          <path d="M2 2l7 7M9 2l-7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {isEnterpriseCloud && shouldShowCTA && (
+        <div className="fixed bottom-4 right-8 z-50 md:bottom-6 md:right-12">
+          <HomepageCTA setShouldShowCTA={setShouldShowCTA} />
+        </div>
+      )}
+
+      {/* Clarification overlay — shown after the user submits a prompt */}
+      {clarifyPrompt && (
+        <ClarifyOverlay
+          prompt={clarifyPrompt}
+          isPending={isPending}
+          onBack={() => setClarifyPrompt(null)}
+          onConfirm={(enriched) => {
+            setClarifyPrompt(null);
+            handleCreateWithPrompt(enriched);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default HomeScreen;

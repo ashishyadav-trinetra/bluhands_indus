@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# BluHands — root .gitignore
+# Sub-packages (control-plane, frontend, agent) have their own .gitignore;
+# this file covers repo-root concerns and anything not caught downstream.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secrets & env files ───────────────────────────────────────────────────────
+# .env.example / .env.sample   → SAFE to commit (no real secrets)
+# everything else               → NEVER commit
+.env
+.env.local
+.env.production
+.env.staging
+.env.*.local
+openhands.env.production        # OpenHands server env with real keys
+
+# Per-service secrets
+control-plane/.env
+control-plane/.env.production
+control-plane/.env.staging
+control-plane/.env.*.local
+control-plane/secrets/          # RS256 PEM keys live here
+
+agent/.env
+agent/.env.production
+agent/.env.staging
+
+frontend/.env.local
+frontend/.env.production
+frontend/.env.staging
+
+# ── PEM / key files (anywhere in the repo) ───────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# ── Node / frontend ───────────────────────────────────────────────────────────
+node_modules/
+.react-router/
+/frontend/dist/
+/frontend/build/
+frontend/public/locales/**/*
+frontend/src/i18n/declaration.ts
+
+# ── Docker / compose ──────────────────────────────────────────────────────────
+# Named volume data never goes in git (it's on the host Docker daemon)
+# Nothing to ignore for volumes, but ignore any local override files:
+docker-compose.override.yml
+
+# ── Build artefacts ───────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+
+# ── Monitoring / observability ────────────────────────────────────────────────
+monitoring/grafana/data/
+monitoring/prometheus/data/
+
+# ── Ephemeral build workspaces (local sandbox) ────────────────────────────────
+/tmp/bluhands-builds/
+bluhands-builds/
+
+# ── Test / CI output ─────────────────────────────────────────────────────────
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

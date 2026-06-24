@@ -1,0 +1,44 @@
+{
+  "backend": "Medusa",
+  "apiBaseUrlTemplate": "http://localhost:9000",
+  "seedAdapter": "medusa",
+  "envTemplate": {
+    "NEXT_PUBLIC_MEDUSA_URL": "{backend_url}",
+    "NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY": "{publishable_key}"
+  },
+  "buildCmd": "npm run build",
+  "serveCmd": "npm run start -- -p 3000 -H 0.0.0.0",
+  "defaultPort": 3000,
+  "buildTimeout": 900,
+  "endpoints": {
+    "list_products":       { "method": "GET",    "path": "/store/products" },
+    "get_product":         { "method": "GET",    "path": "/store/products/{id}" },
+    "list_categories":     { "method": "GET",    "path": "/store/product-categories" },
+    "list_collections":    { "method": "GET",    "path": "/store/collections" },
+    "create_cart":         { "method": "POST",   "path": "/store/carts" },
+    "get_cart":            { "method": "GET",    "path": "/store/carts/{cart_id}" },
+    "add_line_item":       { "method": "POST",   "path": "/store/carts/{cart_id}/line-items" },
+    "update_line_item":    { "method": "POST",   "path": "/store/carts/{cart_id}/line-items/{line_id}" },
+    "delete_line_item":    { "method": "DELETE", "path": "/store/carts/{cart_id}/line-items/{line_id}" },
+    "init_payment":        { "method": "POST",   "path": "/store/carts/{cart_id}/payment-sessions" },
+    "complete_cart":       { "method": "POST",   "path": "/store/carts/{cart_id}/complete" },
+    "list_regions":        { "method": "GET",    "path": "/store/regions" },
+    "list_shipping_opts":  { "method": "GET",    "path": "/store/shipping-options/{cart_id}" }
+  },
+  "product_shape": {
+    "id":          "string",
+    "handle":      "string (URL slug)",
+    "title":       "string",
+    "description": "string | null",
+    "thumbnail":   "string | null (URL)",
+    "images":      "{ url: string }[]",
+    "variants":    "{ id, title, prices: [{amount, currency_code}], inventory_quantity }[]",
+    "collection":  "{ id, title, handle } | null",
+    "categories":  "{ id, name, handle }[]"
+  },
+  "criticalFlows": ["page_load", "browse_products", "view_product", "add_to_cart", "checkout"],
+  "features": {
+    "filters": ["category", "collection", "price_range"],
+    "sort":    ["newest", "price_asc", "price_desc"]
+  }
+}

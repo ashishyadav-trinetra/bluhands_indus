@@ -1,0 +1,92 @@
+[project]
+name = "forge-control-plane"
+version = "0.1.0"
+description = "Forge - multi-tenant control plane (Orchestrator) for the AI app-building platform."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic[email]==2.10.4",
+    "pydantic-settings==2.7.1",
+    "sqlalchemy[asyncio]==2.0.36",
+    "asyncpg==0.30.0",
+    "alembic==1.14.0",
+    "redis==5.2.1",
+    "celery==5.4.0",
+    "flower==2.0.1",
+    "pyjwt[crypto]==2.10.1",
+    "argon2-cffi==23.1.0",
+    "python-multipart==0.0.20",
+    "httpx==0.28.1",
+    "structlog==24.4.0",
+    "prometheus-client==0.21.1",
+    "sentry-sdk==2.19.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.0",
+    "pytest-cov==6.0.0",
+    "anyio==4.7.0",
+    "faker==33.1.0",
+    "ruff==0.8.4",
+    "mypy==1.14.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+# E501 handled by formatter/readability; UP042 (StrEnum) deferred to avoid behavior churn.
+ignore = ["E501", "UP042", "UP017"]  # UP017 needs py3.11 datetime.UTC; keep timezone.utc for portability
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency-injection calls in argument defaults are idiomatic, not bugs.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Path",
+    "fastapi.Header", "fastapi.Security", "fastapi.Body", "fastapi.Form",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Routes & DI legitimately call dependency factories in argument defaults.
+"app/api/v1/routes/*" = ["B008"]
+"app/api/v1/dependencies/*" = ["B008"]
+
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "faker>=33.1.0",
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/tasks/celery_app.py", "migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

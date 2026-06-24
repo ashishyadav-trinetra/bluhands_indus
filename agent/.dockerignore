@@ -1,0 +1,17 @@
+# Keep the build context tiny — the local venvs are gigabytes.
+.venv/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+tests/
+.env
+.env.*
+*.log
+.git/
+.DS_Store
+build/
+dist/
+*.egg-info/

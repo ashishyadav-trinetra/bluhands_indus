@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Medusa golden backend (T-A02) — local/dev compose.
+# Brings up Postgres + Redis + the Medusa server. The Medusa APP SOURCE lives in
+# ./app and is created once via `create-medusa-app` (see README runbook) — it is
+# NOT committed here (huge, scaffolder-generated). India/UPI = plugins on top.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  medusa-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: medusa
+      POSTGRES_PASSWORD: medusa
+      POSTGRES_DB: medusa
+    volumes:
+      - medusa_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5444:5432"   # host 5444 to avoid clashing with control-plane (5433) + local (5432)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medusa -d medusa"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  medusa-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - medusa_redisdata:/data
+    ports:
+      - "6390:6379"   # host 6390 to avoid clashing with control-plane redis (6379)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  medusa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      medusa-db:
+        condition: service_healthy
+      medusa-redis:
+        condition: service_healthy
+    ports:
+      - "9000:9000"   # Store + Admin API (storefront reads /store/products here)
+    volumes:
+      - ./app:/app    # the create-medusa-app project (see README)
+    restart: on-failure
+
+volumes:
+  medusa_pgdata:
+  medusa_redisdata:

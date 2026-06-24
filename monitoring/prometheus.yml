@@ -1,0 +1,24 @@
+# Prometheus scrape config for the BluHands stack.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "control-plane"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+
+  # The agent has no /metrics endpoint yet (only /health) — scraping it just spams
+  # 404s in the agent log. Re-enable once T-A09b adds prometheus instrumentation.
+  # - job_name: "agent"
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["agent:8100"]
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+# Alerting (wire Alertmanager in prod): 5xx rate, queue depth / stuck builds,
+# DB pool saturation, worker crash-loop, credit-refund spikes. See SYSTEM-DESIGN §8.

@@ -1,0 +1,74 @@
+name: control-plane CI
+
+on:
+  push:
+    paths: ["control-plane/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["control-plane/**", ".github/workflows/ci.yml"]
+
+defaults:
+  run:
+    working-directory: control-plane
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: forge
+          POSTGRES_PASSWORD: forge
+          POSTGRES_DB: forge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forge -d forge"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 3s --health-retries 5
+
+    env:
+      FORGE_ENV: development
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge:forge@localhost:5432/forge
+      FORGE_REDIS_URL: redis://localhost:6379/0
+      FORGE_CELERY_BROKER_URL: redis://localhost:6379/1
+      FORGE_CELERY_RESULT_BACKEND: redis://localhost:6379/2
+      FORGE_CORS_ORIGINS_CSV: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install boto3
+
+      - name: Generate RS256 JWT keys (ephemeral, CI only)
+        run: python scripts/generate_keys.py
+
+      - name: Lint (ruff)
+        run: ruff check app tests
+
+      - name: Type-check (mypy)
+        run: mypy app
+        continue-on-error: true  # advisory until fully typed
+
+      - name: Apply migrations (real Postgres smoke)
+        run: alembic upgrade head
+
+      - name: Run tests with coverage
+        run: |
+          pytest -p no:cacheprovider \
+            --cov=app.services --cov=app.core \
+            --cov-report=term-missing --cov-fail-under=80

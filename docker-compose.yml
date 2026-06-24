@@ -1,0 +1,116 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# BluHands — unified development stack (one command brings up everything).
+#
+#   docker compose up --build
+#
+# It INCLUDES the control-plane's own compose (api, worker, flower, db, cache,
+# storage, nginx — all health-checked) and adds: the agent, the frontend, and
+# monitoring (Prometheus + Grafana). It also flips the control-plane to call the
+# REAL agent over HTTP (FORGE_AGENT_MODE=http), wiring control-plane → agent.
+#
+# Prereqs (see STARTUP.md): rename `bluhands-agent/` → `agent/`; create
+# control-plane/.env.development and control-plane/secrets (RS256 keys); set
+# OPENROUTER_API_KEY / E2B_API_KEY in your shell or .env at this root.
+# ─────────────────────────────────────────────────────────────────────────────
+
+include:
+  - control-plane/docker-compose.yml
+
+# Connect control-plane → agent: use the real HTTP client, not the stub.
+x-agent-env: &agent-env
+  FORGE_AGENT_MODE: "http"
+  FORGE_AGENT_BASE_URL: "http://agent:8100"
+
+services:
+  api:
+    environment: *agent-env
+  worker:
+    environment: *agent-env
+
+  # The autonomous coding agent (OpenHands SDK + E2B sandbox).
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+      args:
+        # 0 = base image (dry-run, fast). 1 = install the OpenHands SDK stack for
+        # REAL builds (slower; uses uv to resolve the dep tree).
+        INSTALL_AGENT: "${INSTALL_AGENT:-0}"
+    environment:
+      AGENT_HOST: "0.0.0.0"
+      AGENT_PORT: "8100"
+      AGENT_DRY_RUN: "${AGENT_DRY_RUN:-true}"          # set false for real builds
+      AGENT_SANDBOX_PROVIDER: "${AGENT_SANDBOX_PROVIDER:-local}"  # 'e2b' in prod
+      AGENT_ENV: "${AGENT_ENV:-development}"           # 'production' refuses local sandbox
+      AGENT_E2B_TEMPLATE: "${AGENT_E2B_TEMPLATE:-bluhands-node}"
+      AGENT_MAX_CONCURRENT_BUILDS: "${AGENT_MAX_CONCURRENT_BUILDS:-4}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      E2B_API_KEY: "${E2B_API_KEY:-}"
+      # Persistence: workspace survives agent restarts (named volume below).
+      AGENT_WORKSPACE_ROOT: "/var/bluhands-builds"
+      # JobStore backs to Redis so in-flight job status survives restarts.
+      # Points at the control-plane's cache service on the shared compose network.
+      AGENT_REDIS_URL: "redis://cache:6379/1"
+    volumes:
+      - bluhands_builds:/var/bluhands-builds
+    depends_on:
+      cache:
+        condition: service_healthy
+    ports:
+      - "8100:8100"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health').status==200 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # The product front door (your customized OpenHands UI).
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # Vite bakes VITE_* at build time — pass them as build args so the image
+      # actually has them.  Set the real values in a .env file at this root.
+      args:
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8080}"
+        VITE_SUPABASE_URL: "${VITE_SUPABASE_URL:-}"
+        VITE_SUPABASE_ANON_KEY: "${VITE_SUPABASE_ANON_KEY:-}"
+    environment:
+      # Runtime env vars (for anything not Vite-baked).
+      VITE_MOCK_API: "false"
+    ports:
+      - "3300:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Monitoring ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - bluhands_promdata:/prometheus
+    ports:
+      - "9090:9090"
+    restart: on-failure
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - bluhands_grafanadata:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    restart: on-failure
+
+volumes:
+  bluhands_promdata:
+  bluhands_grafanadata:
+  bluhands_builds:   # agent workspace — persists generated code across restarts

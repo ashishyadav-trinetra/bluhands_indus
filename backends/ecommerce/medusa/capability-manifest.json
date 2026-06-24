@@ -1,0 +1,30 @@
+{
+  "industry": "ecommerce",
+  "backend": "medusa",
+  "version": "2.x",
+  "apiBaseUrlTemplate": "http://localhost:9000",
+  "auth": {
+    "storefront": { "type": "publishable_key", "header": "x-publishable-api-key" }
+  },
+  "endpoints": {
+    "list_products": { "method": "GET", "path": "/store/products", "query": ["limit", "offset", "q"] },
+    "get_product": { "method": "GET", "path": "/store/products/{id}" },
+    "create_cart": { "method": "POST", "path": "/store/carts" },
+    "add_line_item": { "method": "POST", "path": "/store/carts/{id}/line-items" },
+    "complete_cart": { "method": "POST", "path": "/store/carts/{id}/complete" }
+  },
+  "product_shape": {
+    "id": "string",
+    "title": "string",
+    "description": "string|null",
+    "thumbnail": "string|null",
+    "variants[].prices[].amount": "int (minor units)",
+    "variants[].prices[].currency_code": "string"
+  },
+  "features": {
+    "filters": ["price", "size", "color", "collection", "in_stock"],
+    "checkout": ["upi", "razorpay", "stripe"]
+  },
+  "criticalFlows": ["browse", "filter", "search", "add_to_cart", "checkout"],
+  "notes": "Matches apps/starters/ecommerce-next/lib/medusa.ts. UPI/Razorpay are plugins on upstream Medusa, not core forks."
+}

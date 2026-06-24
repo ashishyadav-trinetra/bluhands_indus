@@ -1,0 +1,151 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Forge Control Plane — development compose.
+# All services have health checks (with start_period/interval/retries),
+# restart policies, and named volumes for persistent data.
+# Production overrides (resource limits, secrets) live in a separate file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-api-build: &api-build
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
+  env_file:
+    - .env.development
+  depends_on:
+    db:
+      condition: service_healthy
+    cache:
+      condition: service_healthy
+
+services:
+  api:
+    <<: *api-build
+    env_file:
+      - .env.development
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+      - ./secrets:/app/secrets:ro
+    ports:
+      # Host 8001 to avoid clashing with another service on 8000. Internal
+      # services + nginx still reach it as api:8000 on the compose network.
+      - "8001:8000"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *api-build
+    env_file:
+      - .env.development
+    command: >
+      celery -A app.tasks.celery_app.celery_app worker
+      --loglevel=INFO --concurrency=4 --max-tasks-per-child=100
+      -Q high,default,low
+    volumes:
+      - ./app:/app/app
+      - ./secrets:/app/secrets:ro
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks.celery_app.celery_app inspect ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  flower:
+    <<: *api-build
+    env_file:
+      - .env.development
+    command: >
+      celery -A app.tasks.celery_app.celery_app flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH:-admin:changeme}
+    ports:
+      - "5555:5555"
+    restart: on-failure
+    depends_on:
+      cache:
+        condition: service_healthy
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge
+      POSTGRES_DB: forge
+    volumes:
+      - forge_pgdata:/var/lib/postgresql/data
+    ports:
+      # Host port 5433 to avoid clashing with a local Postgres on 5432.
+      # Internal services still reach it as db:5432 on the compose network.
+      - "5433:5432"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - forge_redisdata:/data
+    ports:
+      - "6379:6379"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  storage:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - forge_miniodata:/data
+    ports:
+      # Host 9100/9101 to avoid clashing with Medusa/other services on 9000.
+      # Internal services still reach it as storage:9000 on the compose network.
+      - "9100:9000"
+      - "9101:9001"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docker/nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  forge_pgdata:
+  forge_redisdata:
+  forge_miniodata:

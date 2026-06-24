@@ -1,0 +1,231 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Forge Control Plane — production compose override (T-701)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from dev:
+#   - No hot-reload volumes
+#   - Resource limits (CPU + memory) on every service
+#   - Secrets via Docker secrets (not env_file)
+#   - TLS-enabled nginx (port 443)
+#   - Pinned image tags (CI sets IMAGE_TAG from git sha)
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "5"
+
+services:
+  api:
+    <<: [*restart, *logging]
+    image: ${REGISTRY:-ghcr.io/bluhands}/forge-api:${IMAGE_TAG:-latest}
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      --workers 4 --loop uvloop --http h11
+    env_file: []          # secrets injected via environment below
+    environment:
+      ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      REDIS_URL_FILE: /run/secrets/redis_url
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+    secrets:
+      - database_url
+      - redis_url
+      - secret_key
+      - jwt_private_key
+      - jwt_public_key
+      - s3_access_key_id
+      - s3_secret_access_key
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    volumes: []           # no source mounts in prod
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    <<: [*restart, *logging]
+    image: ${REGISTRY:-ghcr.io/bluhands}/forge-api:${IMAGE_TAG:-latest}
+    command: >
+      celery -A app.tasks.celery_app.celery_app worker
+      --loglevel=WARNING --concurrency=4 --max-tasks-per-child=100
+      -Q high,default,low
+    environment:
+      ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      REDIS_URL_FILE: /run/secrets/redis_url
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+    secrets:
+      - database_url
+      - redis_url
+      - secret_key
+      - jwt_private_key
+      - jwt_public_key
+      - s3_access_key_id
+      - s3_secret_access_key
+    volumes: []
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.tasks.celery_app.celery_app",
+             "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  flower:
+    <<: [*restart, *logging]
+    image: ${REGISTRY:-ghcr.io/bluhands}/forge-api:${IMAGE_TAG:-latest}
+    command: >
+      celery -A app.tasks.celery_app.celery_app flower
+      --port=5555 --basic-auth_file=/run/secrets/flower_auth
+    secrets:
+      - redis_url
+      - flower_auth
+    environment:
+      ENV: production
+      REDIS_URL_FILE: /run/secrets/redis_url
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    ports: []             # not exposed publicly — access via VPN/bastion
+
+  db:
+    <<: [*restart, *logging]
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: forge
+    secrets:
+      - db_user
+      - db_password
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    ports: []             # no external exposure in prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  cache:
+    <<: [*restart, *logging]
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly yes
+      - --requirepass_file /run/secrets/redis_password
+      - --maxmemory 512mb
+      - --maxmemory-policy allkeys-lru
+    secrets:
+      - redis_password
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 768M
+        reservations:
+          cpus: "0.1"
+          memory: 256M
+    ports: []
+
+  nginx:
+    <<: [*restart, *logging]
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt/live/api.bluhands.dev:/etc/nginx/certs:ro
+      - /etc/nginx/dhparam.pem:/etc/nginx/certs/dhparam.pem:ro
+      - certbot_webroot:/var/www/certbot:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# ── Docker secrets ─────────────────────────────────────────────────────────────
+# In production, create these with:
+#   echo "value" | docker secret create <name> -
+secrets:
+  database_url:
+    external: true
+  redis_url:
+    external: true
+  redis_password:
+    external: true
+  secret_key:
+    external: true
+  jwt_private_key:
+    external: true
+  jwt_public_key:
+    external: true
+  s3_access_key_id:
+    external: true
+  s3_secret_access_key:
+    external: true
+  db_user:
+    external: true
+  db_password:
+    external: true
+  flower_auth:
+    external: true
+
+# ── Persistent volumes ─────────────────────────────────────────────────────────
+volumes:
+  forge_pgdata:
+    driver: local
+  forge_redisdata:
+    driver: local
+  certbot_webroot:
+    driver: local

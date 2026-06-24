@@ -1,0 +1,15 @@
+# E2B template config for the BluHands Node build sandbox.
+# Used by `e2b template build`. The template name must match AGENT_E2B_TEMPLATE
+# (default "bluhands-node"). `template_id` is filled in by the CLI after the first
+# build — commit it so everyone uses the same template.
+
+template_name = "bluhands-node"
+dockerfile = "e2b.Dockerfile"
+
+# No long-running start command — the runner executes commands ad hoc
+# (npm install / build / start) via the SDK.
+# start_cmd = ""
+
+# Give builds enough RAM/CPU for `next build`. Tune to your E2B plan.
+cpu_count = 2
+memory_mb = 2048
