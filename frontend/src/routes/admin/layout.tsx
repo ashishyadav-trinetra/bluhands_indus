@@ -21,7 +21,7 @@ export default function AdminLayout() {
   // Gate check — hits /api/admin/stats; returns 403 for non-admins
   React.useEffect(() => {
     forgeClient
-      .get("/admin/users")
+      .get("/api/v1/admin/users")
       .then(() => {
         setAuthorized(true);
         setChecking(false);

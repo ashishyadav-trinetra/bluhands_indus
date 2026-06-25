@@ -63,7 +63,7 @@ export function Sidebar() {
   React.useEffect(() => {
     import("#/api/bluhands-service/forge-axios").then(({ forgeClient }) => {
       forgeClient
-        .get<{ data: { user: { is_platform_admin: boolean } } }>("/auth/me")
+        .get<{ data: { user: { is_platform_admin: boolean } } }>("/api/v1/auth/me")
         .then((r) => setIsAdmin(r.data?.data?.user?.is_platform_admin === true))
         .catch(() => {});
     });

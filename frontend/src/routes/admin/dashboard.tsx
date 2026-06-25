@@ -41,7 +41,7 @@ export default function AdminDashboard() {
 
   React.useEffect(() => {
     forgeClient
-      .get<{ data: Stats }>("/admin/stats")
+      .get<{ data: Stats }>("/api/v1/admin/stats")
       .then((r) => setStats(r.data.data))
       .catch(console.error)
       .finally(() => setLoading(false));
