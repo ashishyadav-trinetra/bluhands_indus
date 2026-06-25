@@ -98,7 +98,7 @@ function Logo({ intg }: { intg: Integration }) {
   const [failed, setFailed] = React.useState(false);
   const src = LOGO_DEV_TOKEN
     ? `https://img.logo.dev/${intg.domain}?token=${LOGO_DEV_TOKEN}&size=40&format=webp`
-    : `https://logo.clearbit.com/${intg.domain}`; // clearbit as fallback when no token
+    : `https://www.google.com/s2/favicons?domain=${intg.domain}&sz=64`;
 
   if (!failed) {
     return (

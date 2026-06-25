@@ -149,7 +149,7 @@ class V1ConversationService {
       `/api/v1/app-conversations/start-tasks/search?${params.toString()}`,
     );
 
-    return data.items;
+    return data?.items ?? [];
   }
 
   /**

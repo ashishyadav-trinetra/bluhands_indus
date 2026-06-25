@@ -371,10 +371,10 @@ function HomeScreen() {
     }
   };
 
-  // Starter chips bypass clarification and go straight to create.
+  // Starter chips open the smart clarify overlay just like a manual prompt.
   const handleStarterClick = (prompt: string) => {
     if (isPending) return;
-    handleCreateWithPrompt(prompt);
+    setClarifyPrompt(prompt);
   };
 
   // Main submit: show clarification overlay instead of creating immediately.
