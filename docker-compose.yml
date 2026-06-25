@@ -16,17 +16,11 @@
 include:
   - control-plane/docker-compose.yml
 
-# Connect control-plane → agent: use the real HTTP client, not the stub.
-x-agent-env: &agent-env
-  FORGE_AGENT_MODE: "http"
-  FORGE_AGENT_BASE_URL: "http://agent:8100"
+# FORGE_AGENT_MODE=http and FORGE_AGENT_BASE_URL are set in
+# control-plane/.env.development (or .env.production) so the included
+# api/worker services pick them up without conflicting with the include.
 
 services:
-  api:
-    environment: *agent-env
-  worker:
-    environment: *agent-env
-
   # The autonomous coding agent (OpenHands SDK + E2B sandbox).
   agent:
     build:
