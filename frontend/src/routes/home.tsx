@@ -12,56 +12,16 @@ import { useForgeTenants } from "#/hooks/query/use-forge-tenant";
 import { useStartBuild } from "#/hooks/mutation/use-start-build";
 import { useDeleteConversation } from "#/hooks/mutation/use-delete-conversation";
 
-// ─── Clarification questions shown before creating a conversation ──────────────
-interface ClarifyQuestion {
+// ─── Smart LLM-powered clarification overlay ──────────────────────────────────
+interface AgentQuestion {
   id: string;
-  label: string;
+  text: string;
+  kind: "single" | "multi" | "text";
   options: string[];
+  allow_other: boolean;
+  help: string;
 }
 
-const CLARIFY_QUESTIONS: ClarifyQuestion[] = [
-  {
-    id: "type",
-    label: "What are you building?",
-    options: ["Web app / SaaS", "Landing page", "REST API / Backend", "Dashboard", "E-commerce", "Something else"],
-  },
-  {
-    id: "style",
-    label: "Pick a vibe",
-    options: ["Clean & minimal", "Bold & modern", "Corporate / professional", "Fun & playful"],
-  },
-  {
-    id: "tech",
-    label: "Technology preference",
-    options: ["Let the agent decide", "React + Tailwind", "Vue / Nuxt", "Plain HTML/CSS/JS", "Node + Express"],
-  },
-  {
-    id: "priority",
-    label: "Top priority",
-    options: ["Ship fast", "Pixel-perfect design", "Scalable architecture", "Mobile-first"],
-  },
-];
-
-function buildEnrichedPrompt(
-  base: string,
-  answers: Record<string, string>,
-): string {
-  const parts: string[] = [base.trim()];
-  if (answers.type && answers.type !== "Something else")
-    parts.push(`Project type: ${answers.type}.`);
-  if (answers.style)
-    parts.push(`Design style: ${answers.style}.`);
-  if (answers.tech && answers.tech !== "Let the agent decide")
-    parts.push(`Tech stack: ${answers.tech}.`);
-  if (answers.priority)
-    parts.push(`Priority: ${answers.priority}.`);
-  parts.push(
-    "Bind the server to 0.0.0.0 (not localhost) and use port 8011 so it is reachable externally. Use relative asset paths (e.g. ./assets/) not leading slashes.",
-  );
-  return parts.join("\n");
-}
-
-// ─── Clarification overlay component ──────────────────────────────────────────
 interface ClarifyOverlayProps {
   prompt: string;
   onConfirm: (enrichedPrompt: string) => void;
@@ -70,24 +30,80 @@ interface ClarifyOverlayProps {
 }
 
 function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlayProps) {
-  const [answers, setAnswers] = React.useState<Record<string, string>>({});
+  const [questions, setQuestions] = React.useState<AgentQuestion[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [answers, setAnswers] = React.useState<Record<string, string | string[]>>({});
   const [activeQ, setActiveQ] = React.useState(0);
+  const [enhancing, setEnhancing] = React.useState(false);
 
-  const pick = (qId: string, option: string) => {
-    const next = { ...answers, [qId]: option };
-    setAnswers(next);
-    if (activeQ < CLARIFY_QUESTIONS.length - 1) {
+  // Fetch smart questions from the agent
+  React.useEffect(() => {
+    import("#/api/bluhands-service/forge-axios").then(({ forgeClient }) => {
+      forgeClient
+        .post<{ questions: AgentQuestion[] }>("/api/v1/agent/clarify", { prompt })
+        .then((r) => {
+          const qs = r.data?.questions ?? [];
+          setQuestions(qs);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    });
+  }, [prompt]);
+
+  const pickSingle = (qId: string, option: string) => {
+    setAnswers((prev) => ({ ...prev, [qId]: option }));
+    if (activeQ < questions.length - 1) {
       setTimeout(() => setActiveQ((a) => a + 1), 220);
     }
   };
 
-  const allAnswered = CLARIFY_QUESTIONS.every((q) => answers[q.id]);
+  const toggleMulti = (qId: string, option: string) => {
+    setAnswers((prev) => {
+      const current = (prev[qId] as string[]) || [];
+      const next = current.includes(option)
+        ? current.filter((o) => o !== option)
+        : [...current, option];
+      return { ...prev, [qId]: next };
+    });
+  };
+
+  const allAnswered = questions.every((q) => {
+    const a = answers[q.id];
+    if (q.kind === "text") return typeof a === "string" && a.trim().length > 0;
+    if (q.kind === "multi") return Array.isArray(a) && a.length > 0;
+    return typeof a === "string" && a.length > 0;
+  });
+
+  const handleConfirm = async () => {
+    setEnhancing(true);
+    try {
+      const { forgeClient } = await import("#/api/bluhands-service/forge-axios");
+      const formattedAnswers = questions.map((q) => {
+        const a = answers[q.id];
+        return {
+          question_id: q.id,
+          selected: Array.isArray(a) ? a : (typeof a === "string" && q.kind !== "text" ? [a] : []),
+          text: q.kind === "text" && typeof a === "string" ? a : "",
+        };
+      });
+      const r = await forgeClient.post<{ enhanced_prompt: string }>("/api/v1/agent/enhance", {
+        prompt,
+        clarifications: formattedAnswers,
+      });
+      onConfirm(r.data?.enhanced_prompt || prompt);
+    } catch {
+      // Fallback: use raw prompt if enhance fails
+      onConfirm(prompt);
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
+  const busy = isPending || enhancing;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onBack} />
-
       <div
         className="relative w-full max-w-[560px] bg-[#0d0f14] border border-[#2a2d37] rounded-2xl shadow-2xl overflow-hidden"
         style={{ boxShadow: "0 0 60px rgba(59,130,246,0.12)" }}
@@ -101,115 +117,113 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
                 Let&apos;s tailor this for you
               </h2>
             </div>
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-[#555] hover:text-white transition-colors mt-0.5 shrink-0"
-              aria-label="Back"
-            >
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 8h8M4 8l3-3M4 8l3 3" />
-              </svg>
+            <button type="button" onClick={onBack} className="text-[#555] hover:text-white transition-colors mt-0.5 shrink-0" aria-label="Back">
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h8M4 8l3-3M4 8l3 3" /></svg>
             </button>
           </div>
-          {/* Prompt preview */}
           <p className="mt-3 text-xs text-[#666] bg-[#111318] rounded-lg px-3 py-2 border border-[#1e2028] line-clamp-2">
             &ldquo;{prompt}&rdquo;
           </p>
         </div>
 
-        {/* Questions */}
-        <div className="px-6 py-5 space-y-5">
-          {CLARIFY_QUESTIONS.map((q, qi) => {
-            const isActive = qi <= activeQ || !!answers[q.id];
-            return (
-              <div
-                key={q.id}
-                className="transition-all duration-300"
-                style={{ opacity: isActive ? 1 : 0.35 }}
-              >
-                <p className="text-[13px] font-medium text-[#c8cdd6] mb-2.5 flex items-center gap-2">
-                  {answers[q.id] ? (
-                    <span className="w-4 h-4 rounded-full bg-[#3b82f6] flex items-center justify-center shrink-0">
-                      <svg width="8" height="8" fill="none" stroke="white" strokeWidth="2.5">
-                        <path d="M1 4l2 2 4-4" />
-                      </svg>
-                    </span>
+        {/* Body */}
+        <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <div className="w-6 h-6 border-2 border-[#3b82f6]/30 border-t-[#3b82f6] rounded-full animate-spin" />
+              <p className="text-xs text-[#555]">Thinking about your project…</p>
+            </div>
+          ) : questions.length === 0 ? (
+            <p className="text-sm text-[#666] text-center py-8">No questions needed — ready to build!</p>
+          ) : (
+            questions.map((q, qi) => {
+              const isActive = qi <= activeQ || answers[q.id] !== undefined;
+              const ans = answers[q.id];
+              const answered = q.kind === "text"
+                ? typeof ans === "string" && ans.trim().length > 0
+                : q.kind === "multi"
+                  ? Array.isArray(ans) && ans.length > 0
+                  : typeof ans === "string" && ans.length > 0;
+
+              return (
+                <div key={q.id} className="transition-all duration-300" style={{ opacity: isActive ? 1 : 0.35 }}>
+                  <p className="text-[13px] font-medium text-[#c8cdd6] mb-2.5 flex items-center gap-2">
+                    {answered ? (
+                      <span className="w-4 h-4 rounded-full bg-[#3b82f6] flex items-center justify-center shrink-0">
+                        <svg width="8" height="8" fill="none" stroke="white" strokeWidth="2.5"><path d="M1 4l2 2 4-4" /></svg>
+                      </span>
+                    ) : (
+                      <span className="w-4 h-4 rounded-full border border-[#3b82f6]/40 flex items-center justify-center shrink-0 text-[10px] text-[#3b82f6]">{qi + 1}</span>
+                    )}
+                    {q.text}
+                  </p>
+                  {q.help && <p className="text-[11px] text-[#555] mb-2 ml-6">{q.help}</p>}
+
+                  {q.kind === "text" ? (
+                    <input
+                      type="text"
+                      disabled={!isActive || busy}
+                      value={typeof ans === "string" ? ans : ""}
+                      onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                      onFocus={() => setActiveQ(qi)}
+                      placeholder="Type your answer…"
+                      className="w-full bg-[#111318] border border-[#2a2d37] rounded-lg px-3 py-2 text-[12px] text-white placeholder-[#555] outline-none focus:border-[#3b82f6]/50"
+                    />
                   ) : (
-                    <span className="w-4 h-4 rounded-full border border-[#3b82f6]/40 flex items-center justify-center shrink-0 text-[10px] text-[#3b82f6]">
-                      {qi + 1}
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {q.options.map((opt) => {
+                        const selected = q.kind === "multi"
+                          ? Array.isArray(ans) && (ans as string[]).includes(opt)
+                          : ans === opt;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            disabled={!isActive || busy}
+                            onClick={() => q.kind === "multi" ? toggleMulti(q.id, opt) : pickSingle(q.id, opt)}
+                            className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all duration-150 cursor-pointer
+                              ${selected ? "bg-[#3b82f6]/15 border-[#3b82f6]/60 text-[#60a5fa] font-medium" : "bg-[#111318] border-[#2a2d37] text-[#9099ac] hover:border-[#3b82f6]/40 hover:text-white"}
+                              disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                  {q.label}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {q.options.map((opt) => {
-                    const selected = answers[q.id] === opt;
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        disabled={!isActive || isPending}
-                        onClick={() => pick(q.id, opt)}
-                        className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all duration-150 cursor-pointer
-                          ${selected
-                            ? "bg-[#3b82f6]/15 border-[#3b82f6]/60 text-[#60a5fa] font-medium"
-                            : "bg-[#111318] border-[#2a2d37] text-[#9099ac] hover:border-[#3b82f6]/40 hover:text-white"
-                          }
-                          disabled:cursor-not-allowed disabled:opacity-50`}
-                      >
-                        {opt}
-                      </button>
-                    );
-                  })}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-[13px] text-[#666] hover:text-white transition-colors"
-          >
+        <div className="px-6 pb-6 pt-4 border-t border-[#1e2028] flex items-center justify-between gap-3">
+          <button type="button" onClick={onBack} className="text-[13px] text-[#666] hover:text-white transition-colors">
             ← Edit prompt
           </button>
           <button
             type="button"
-            disabled={!allAnswered || isPending}
-            onClick={() => onConfirm(buildEnrichedPrompt(prompt, answers))}
+            disabled={loading || (questions.length > 0 && !allAnswered) || busy}
+            onClick={handleConfirm}
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-30 disabled:cursor-not-allowed text-white text-[13px] font-medium transition-colors"
           >
-            {isPending ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Starting…
-              </>
+            {busy ? (
+              <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Building…</>
             ) : (
-              <>
-                Start building
-                <svg width="13" height="13" fill="none" stroke="white" strokeWidth="2.5">
-                  <path d="M2 6.5h9M8 3l3 3.5-3 3.5" />
-                </svg>
-              </>
+              <>Start building <svg width="13" height="13" fill="none" stroke="white" strokeWidth="2.5"><path d="M2 6.5h9M8 3l3 3.5-3 3.5" /></svg></>
             )}
           </button>
         </div>
 
         {/* Progress dots */}
-        <div className="flex justify-center gap-1.5 pb-4">
-          {CLARIFY_QUESTIONS.map((q, qi) => (
-            <div
-              key={q.id}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                answers[q.id] ? "w-4 bg-[#3b82f6]" : qi === activeQ ? "w-2 bg-[#3b82f6]/50" : "w-1.5 bg-[#2a2d37]"
-              }`}
-            />
-          ))}
-        </div>
+        {!loading && questions.length > 0 && (
+          <div className="flex justify-center gap-1.5 pb-4">
+            {questions.map((q, qi) => (
+              <div key={q.id} className={`h-1 rounded-full transition-all duration-300 ${answers[q.id] !== undefined ? "w-4 bg-[#3b82f6]" : qi === activeQ ? "w-2 bg-[#3b82f6]/50" : "w-1.5 bg-[#2a2d37]"}`} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -347,9 +361,6 @@ function HomeScreen() {
             navigate(`/forge/build/${forgeOrgId}/${forgeTenant.id}/${build.id}`),
         },
       );
-    } else if (forgeOrgId && forgeTenants?.length === 0) {
-      // Org exists but no tenant yet — send to industry setup.
-      navigate("/forge/setup");
     } else {
       createConversation(
         { query: prompt },
@@ -418,8 +429,8 @@ function HomeScreen() {
           Describe your project or pick a starter below
         </p>
 
-        {/* Industry setup nudge — shown once before a tenant exists */}
-        {forgeOrgId && forgeTenants?.length === 0 && (
+        {/* Industry setup nudge — hidden for now */}
+        {false && forgeOrgId && forgeTenants?.length === 0 && (
           <button
             type="button"
             onClick={() => navigate("/forge/setup")}
