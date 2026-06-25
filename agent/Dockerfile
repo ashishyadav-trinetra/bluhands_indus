@@ -7,7 +7,7 @@
 # Multi-stage, non-root, no source bind-mounts in prod.
 
 # ---- builder: install the package (+ optional agent extras) into a venv -----
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 # INSTALL_AGENT=1 pulls the heavy OpenHands SDK stack (real builds). Default 0 =
 # base deps only (fastapi/uvicorn/pydantic/httpx) → fast image that runs in
@@ -38,7 +38,7 @@ RUN if [ "$INSTALL_AGENT" = "1" ]; then \
     fi
 
 # ---- runtime: minimal, non-root --------------------------------------------
-FROM python:3.11-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
