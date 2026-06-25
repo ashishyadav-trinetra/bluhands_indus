@@ -97,8 +97,8 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - forge_redisdata:/data
-    ports:
-      - "6379:6379"
+    # No host port binding — internal services reach this as cache:6379 on the
+    # compose network. Avoids clashing with any Redis already running on the host.
     restart: on-failure
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
