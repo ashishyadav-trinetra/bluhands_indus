@@ -165,8 +165,7 @@ async def cancel_build(
 
 @router.delete(
     "/{build_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
+    status_code=status.HTTP_200_OK,
     summary="Delete a build (owner only)",
 )
 async def delete_build(
