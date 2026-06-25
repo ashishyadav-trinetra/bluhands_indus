@@ -31,6 +31,28 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+@router.get("/stats")
+async def get_stats(
+    request: Request,
+    _admin: User = Depends(require_platform_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> SuccessResponse[dict]:
+    """Platform-wide summary stats (admin only)."""
+    users = await service.list_users(limit=10000, offset=0)
+    orgs = await service.list_orgs(limit=10000, offset=0)
+    return SuccessResponse[dict](
+        data={
+            "total_users": len(users),
+            "total_orgs": len(orgs),
+            "paid_orgs": 0,
+            "free_orgs": len(orgs),
+            "pro_orgs": 0,
+            "business_orgs": 0,
+        },
+        request_id=_request_id(request),
+    )
+
+
 @router.get("/users", response_model=SuccessResponse[list[AdminUserView]])
 async def list_users(
     request: Request,

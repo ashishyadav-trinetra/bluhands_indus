@@ -58,13 +58,13 @@ export function Sidebar() {
   );
   const [searchQuery, setSearchQuery] = React.useState("");
 
-  // Admin check — only show admin link if user has super_admin role
+  // Admin check — show admin link only for platform admins
   const [isAdmin, setIsAdmin] = React.useState(false);
   React.useEffect(() => {
-    import("#/api/open-hands-axios").then(({ openHands }) => {
-      openHands
-        .get("/api/admin/stats")
-        .then(() => setIsAdmin(true))
+    import("#/api/bluhands-service/forge-axios").then(({ forgeClient }) => {
+      forgeClient
+        .get<{ data: { user: { is_platform_admin: boolean } } }>("/auth/me")
+        .then((r) => setIsAdmin(r.data?.data?.user?.is_platform_admin === true))
         .catch(() => {});
     });
   }, []);

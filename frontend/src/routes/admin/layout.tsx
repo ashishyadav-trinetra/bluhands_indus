@@ -4,7 +4,7 @@
  */
 import React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
-import { openHands } from "#/api/open-hands-axios";
+import { forgeClient } from "#/api/bluhands-service/forge-axios";
 
 const NAV = [
   { label: "Dashboard", path: "/admin", icon: "📊" },
@@ -20,8 +20,8 @@ export default function AdminLayout() {
 
   // Gate check — hits /api/admin/stats; returns 403 for non-admins
   React.useEffect(() => {
-    openHands
-      .get("/api/admin/stats")
+    forgeClient
+      .get("/admin/users")
       .then(() => {
         setAuthorized(true);
         setChecking(false);

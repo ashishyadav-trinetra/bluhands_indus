@@ -2,7 +2,7 @@
  * Admin dashboard — platform-wide metrics.
  */
 import React from "react";
-import { openHands } from "#/api/open-hands-axios";
+import { forgeClient } from "#/api/bluhands-service/forge-axios";
 
 interface Stats {
   total_users: number;
@@ -40,9 +40,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    openHands
-      .get<Stats>("/api/admin/stats")
-      .then((r) => setStats(r.data))
+    forgeClient
+      .get<{ data: Stats }>("/admin/stats")
+      .then((r) => setStats(r.data.data))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
