@@ -13,6 +13,21 @@ from agent.clarify import (
 )
 
 
+def test_detailed_prompt_asks_no_questions() -> None:
+    # A fully-specified technical prompt should get ZERO clarifying questions.
+    detailed = (
+        "Create a modern landing page with a hero section, features grid, "
+        "testimonials, and a CTA. Use React with Tailwind CSS. Make it responsive. "
+        "Use port 8011 and bind to 0.0.0.0."
+    )
+    assert generate_questions(prompt=detailed).questions == []
+
+
+def test_vague_prompt_still_asks() -> None:
+    result = generate_questions(prompt="build me a todo app")
+    assert len(result.questions) >= 1
+
+
 def test_default_questions_offline_are_valid_and_capped() -> None:
     result = generate_questions(industry="ecommerce")
     assert 1 <= len(result.questions) <= MAX_QUESTIONS

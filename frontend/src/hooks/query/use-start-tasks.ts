@@ -19,10 +19,21 @@ export const useStartTasks = (limit = 10) => {
 
   return useQuery({
     queryKey: ["start-tasks", "search", limit],
-    queryFn: () => V1ConversationService.searchStartTasks(limit),
+    // This hits the legacy OpenHands conversation backend, which isn't present
+    // in the BluHands deployment. Swallow failures → [] so it never surfaces a
+    // recurring "data is undefined" error toast.
+    queryFn: async () => {
+      try {
+        return await V1ConversationService.searchStartTasks(limit);
+      } catch {
+        return [];
+      }
+    },
     enabled: isV1Enabled,
+    retry: false,
+    refetchOnWindowFocus: false,
     select: (tasks) =>
-      tasks.filter(
+      (tasks ?? []).filter(
         (task) => task.status !== "READY" && task.status !== "ERROR",
       ),
   });

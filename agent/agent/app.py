@@ -50,7 +50,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         Called right after the merchant submits their prompt, before any build.
         Uses the LLM when a key is configured; deterministic defaults otherwise.
         """
-        llm_complete = None if settings.dry_run else make_completion(settings)
+        # Clarify/enhance are cheap LLM calls — use the LLM whenever a key exists,
+        # even in dry_run (which only governs whether real BUILDS run). None when
+        # no key → deterministic fallback.
+        llm_complete = make_completion(settings)
         result = generate_questions(
             prompt=payload.prompt,
             industry=payload.industry,
@@ -71,7 +74,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         a deterministic heuristic otherwise. The UI can show the plan for
         confirmation, then send ``enhanced_prompt`` with the build request.
         """
-        llm_complete = None if settings.dry_run else make_completion(settings)
+        # Clarify/enhance are cheap LLM calls — use the LLM whenever a key exists,
+        # even in dry_run (which only governs whether real BUILDS run). None when
+        # no key → deterministic fallback.
+        llm_complete = make_completion(settings)
         spec = enhance(
             prompt=payload.prompt,
             clarifications=payload.clarifications,

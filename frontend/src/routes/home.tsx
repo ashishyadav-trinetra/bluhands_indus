@@ -137,7 +137,10 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
             <p className="text-sm text-[#666] text-center py-8">No questions needed — ready to build!</p>
           ) : (
             questions.map((q, qi) => {
-              const isActive = qi <= activeQ || answers[q.id] !== undefined;
+              // All questions are reachable at once — sequential gating used to
+              // trap text questions (typing didn't advance the unlock), which
+              // left later questions greyed out and "Start building" disabled.
+              const isActive = !busy;
               const ans = answers[q.id];
               const answered = q.kind === "text"
                 ? typeof ans === "string" && ans.trim().length > 0
@@ -302,7 +305,7 @@ function HomeScreen() {
   const { data: settings } = useSettings();
   const user = useGitUser();
   const { data: conversationData } = usePaginatedConversations();
-  const { mutate: createConversation, isPending: isConversationPending } = useCreateConversation();
+  const { isPending: isConversationPending } = useCreateConversation();
 
   // ── Forge (BluHands control-plane) ────────────────────────────────────────
   const { data: forgeMe } = useForgeMe();
@@ -362,12 +365,11 @@ function HomeScreen() {
         },
       );
     } else {
-      createConversation(
-        { query: prompt },
-        {
-          onSuccess: (data) => navigate(`/conversations/${data.conversation_id}`),
-        },
-      );
+      // No Forge org/tenant yet — the old OpenHands conversation path is a dead
+      // end on this deployment (no conversation backend), which left the agent
+      // stuck on "Starting". Send the user to setup to provision a tenant; carry
+      // the prompt so the build can resume afterwards.
+      navigate("/forge/setup", { state: { pendingPrompt: prompt } });
     }
   };
 

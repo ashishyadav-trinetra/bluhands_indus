@@ -108,6 +108,29 @@ def _known(business: dict | None, brand: dict | None) -> dict[str, bool]:
 
 _ECOMMERCE_INDUSTRIES = {"ecommerce", "e-commerce", "restaurant"}
 
+# Signals that a prompt already specifies the build (so no questions are needed).
+_TECH_SIGNALS = (
+    "react", "tailwind", "next.js", "nextjs", "vue", "svelte", "angular",
+    "express", "node", "fastapi", "flask", "django", "rails",
+    "api", "rest", "graphql", "endpoint", "crud", "auth", "jwt",
+    "database", "postgres", "sqlite", "mysql", "mongo", "redis",
+    "websocket", "socket.io", "typescript", "component", "responsive",
+    "dashboard", "chart", "recharts", "port ", "0.0.0.0",
+)
+
+
+def _is_detailed(prompt: str) -> bool:
+    """True when the prompt already names concrete tech + structure.
+
+    Heuristic: reasonably long AND mentions >= 2 tech/structure signals. Such
+    prompts don't need clarification (e.g. 'landing page with hero/features/CTA,
+    React + Tailwind, responsive, port 8011').
+    """
+    p = (prompt or "").lower()
+    words = len(p.split())
+    hits = sum(1 for s in _TECH_SIGNALS if s in p)
+    return words >= 16 and hits >= 2
+
 
 def _default_questions(
     *,
@@ -247,28 +270,27 @@ def _general_questions(*, max_questions: int) -> ClarificationSet:
 # --------------------------------------------------------------------------- #
 
 _SYSTEM = (
-    "You are BluHands, an expert product engineer onboarding a non-technical "
-    "user before building their app. Your job is to ask the FEWEST possible "
-    "clarifying questions — only those whose answers would genuinely change what "
-    "you build. A confident expert asks little. Never ask for information already "
-    "provided. Prefer multiple-choice with sensible options so the user can answer "
-    "in one tap; allow a free-text escape. Output STRICT JSON only."
+    "You are BluHands, an expert software engineer about to build whatever app the "
+    "user describes. Ask the FEWEST possible clarifying questions — only those "
+    "whose answers would genuinely change what you build. If the request already "
+    "specifies the app, its stack, and its structure, ask ZERO questions. A "
+    "confident engineer asks little; never ask for the project's name or anything "
+    "already stated or inferable. Prefer multiple-choice so the user answers in one "
+    "tap; allow a free-text escape. Output STRICT JSON only."
 )
 
 _USER_TEMPLATE = (
-    "Merchant request:\n{prompt}\n\n"
-    "Industry: {industry}\n"
-    "Known business facts: {business}\n"
-    "Known brand: {brand}\n"
-    "Catalog (sample names): {products}\n"
-    "Backend capability manifest (you build the frontend against this): {manifest}\n\n"
+    "User request:\n{prompt}\n\n"
+    "Domain/industry (may be empty): {industry}\n"
+    "Known context (may be empty): business={business} brand={brand} "
+    "data={products} backend={manifest}\n\n"
     "Return JSON of this exact shape (ask at most {max_questions} questions; ask "
-    "FEWER if the request is already clear):\n"
+    "0 if the request is already clear and complete):\n"
     '{{"questions": [ '
     '{{"id": "snake_case_id", "text": "...", "kind": "single|multi|text", '
     '"options": ["..."], "allow_other": true, "help": "..."}} ] }}\n'
     "Rules: text questions have empty options; single/multi have 2-5 options; do "
-    "not ask anything answerable from the facts above."
+    "not ask anything answerable from the request above."
 )
 
 
@@ -285,7 +307,7 @@ def _build_user_prompt(
     names = [str(p.get("name")) for p in (products or []) if (p.get("name") or "").strip()][:12]
     return _USER_TEMPLATE.format(
         prompt=(prompt or "(none given)").strip(),
-        industry=industry or "ecommerce",
+        industry=industry or "general",
         business=json.dumps(business or {}, ensure_ascii=False),
         brand=json.dumps(brand or {}, ensure_ascii=False),
         products=json.dumps(names, ensure_ascii=False),
@@ -336,6 +358,13 @@ def generate_questions(
     popup is never empty and the service never hard-fails on clarification.
     """
     max_questions = max(1, min(max_questions, MAX_QUESTIONS))
+
+    # If the request already specifies what to build (tech + structure), a
+    # confident agent asks NOTHING — don't pester with "what's the name?" on a
+    # fully-spec'd prompt. The LLM still gets a strict "ask fewer" instruction.
+    if _is_detailed(prompt):
+        return ClarificationSet(questions=[])
+
     if llm_complete is not None:
         try:
             user = _build_user_prompt(
