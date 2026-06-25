@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, status
+from fastapi.responses import Response
 
 from app.api.v1.dependencies.auth import require_org_role
 from app.api.v1.dependencies.providers import get_app_settings
@@ -165,6 +166,7 @@ async def cancel_build(
 @router.delete(
     "/{build_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
     summary="Delete a build (owner only)",
 )
 async def delete_build(
