@@ -60,14 +60,27 @@ async def start_build(
 ) -> SuccessResponse[BuildRunResponse]:
     """Enqueue a new build job and return 202 Accepted with the build ID.
 
-    The LLM the agent uses is chosen from the requester's platform role
-    (tester/self get fixed models) and persisted on the build run.
+    Access model: admin / self / tester use the agent for free (platform LLM key,
+    no per-user key). Normal users must upgrade. The LLM is chosen from the
+    requester's platform role and persisted on the build run.
     """
+    from app.core.exceptions import AppError
+    from app.db.models.enums import PlatformRole
+
+    _AGENT_ROLES = {PlatformRole.ADMIN.value, PlatformRole.SELF.value, PlatformRole.TESTER.value}
+    if user.platform_role not in _AGENT_ROLES:
+        raise AppError(
+            "Agent access requires a Pro upgrade.",
+            code="UPGRADE_REQUIRED",
+            http_status=402,
+        )
+
     build_run = await service.start_build(
         tenant_id, org_id, body,
         actor=f"user:{user.id}",
         ip=_client_ip(request),
         llm_model=settings.model_for_role(user.platform_role),
+        started_by=user.id,
     )
     return SuccessResponse(data=BuildRunResponse.model_validate(build_run))
 

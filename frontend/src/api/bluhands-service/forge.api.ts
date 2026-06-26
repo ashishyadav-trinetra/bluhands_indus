@@ -3,6 +3,8 @@ import type {
   BuildRunResponse,
   BuildStartRequest,
   ForgeEnvelope,
+  GithubRepo,
+  GithubStatus,
   MeResponse,
   TenantCreate,
   TenantResponse,
@@ -61,6 +63,22 @@ export const forgeService = {
     const { data } = await forgeClient.post<ForgeEnvelope<BuildRunResponse>>(
       `/api/v1/orgs/${orgId}/tenants/${tenantId}/builds`,
       body,
+    );
+    return unwrap(data);
+  },
+
+  // ── GitHub (via Nango) ──────────────────────────────────────────────────────
+
+  githubStatus: async (): Promise<GithubStatus> => {
+    const { data } = await forgeClient.get<ForgeEnvelope<GithubStatus>>(
+      "/api/v1/integrations/github",
+    );
+    return unwrap(data);
+  },
+
+  githubRepos: async (): Promise<GithubRepo[]> => {
+    const { data } = await forgeClient.get<ForgeEnvelope<GithubRepo[]>>(
+      "/api/v1/integrations/github/repos",
     );
     return unwrap(data);
   },

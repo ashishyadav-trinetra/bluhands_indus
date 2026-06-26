@@ -68,6 +68,7 @@ class BuildService:
         actor: str,
         ip: str | None = None,
         llm_model: str | None = None,
+        started_by: uuid.UUID | None = None,
     ) -> BuildRun:
         """Create a QUEUED BuildRun and enqueue the Celery task.
 
@@ -95,6 +96,11 @@ class BuildService:
             status=BuildStatus.QUEUED,
             prompt=data.prompt,
             llm_model=llm_model,
+            started_by=started_by,
+            github_repo_url=data.github_repo_url,
+            github_branch=data.github_branch,
+            github_push=data.github_push,
+            github_pull=data.github_pull,
             credits_cost=self._build_credit_cost,
         )
         build_run = await self._builds.create(build_run)

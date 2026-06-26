@@ -24,6 +24,7 @@ class StubAgentClient:
         backend_url: str | None = None,
         publishable_key: str = "",
         manifest: dict | None = None,
+        github: dict | None = None,
     ) -> str:
         return f"stub-job-{build_id}"
 
@@ -58,6 +59,7 @@ class HttpAgentClient:
         backend_url: str | None = None,
         publishable_key: str = "",
         manifest: dict | None = None,
+        github: dict | None = None,
     ) -> str:
         import httpx
 
@@ -75,6 +77,12 @@ class HttpAgentClient:
             body["publishable_key"] = publishable_key
         if manifest:
             body["manifest"] = manifest
+        if github and github.get("repo_url"):
+            body["github_repo_url"] = github["repo_url"]
+            body["github_token"] = github.get("token")
+            body["github_branch"] = github.get("branch") or "main"
+            body["github_push"] = bool(github.get("push"))
+            body["github_pull"] = bool(github.get("pull"))
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             resp = await client.post(f"{self._base_url}/builds", json=body)
             resp.raise_for_status()

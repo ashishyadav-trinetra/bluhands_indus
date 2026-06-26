@@ -61,6 +61,12 @@ class StartBuildRequest(BaseModel):
     enhanced_prompt: str | None = None
     # LLM model chosen by the control-plane from the requester's role (per-role gating)
     llm_model: str | None = None
+    # GitHub (user-driven; the control-plane fetches the token from Nango)
+    github_repo_url: str | None = None
+    github_token: str | None = None
+    github_branch: str = "main"
+    github_push: bool = False
+    github_pull: bool = False
 
 
 class EnhanceRequest(BaseModel):

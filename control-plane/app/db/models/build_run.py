@@ -46,6 +46,13 @@ class BuildRun(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     # LLM model for this build, chosen from the requester's platform role (gating).
     llm_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Who started the build (for fetching their GitHub token at execution time).
+    started_by: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    # GitHub (user-driven push/pull). Token is NOT stored — fetched from Nango at run time.
+    github_repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    github_branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    github_push: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+    github_pull: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
     credits_cost: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     preview_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     prod_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

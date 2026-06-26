@@ -302,10 +302,14 @@ class FakeAgentClient:
         medusa_url: str | None = None,
         publishable_key: str = "",
         manifest: dict | None = None,
+        github: dict | None = None,
+        **_extra,
     ) -> str:
         if self.fail:
             raise RuntimeError("Agent service unavailable")
-        self.started.append({"build_id": build_id, "prompt": prompt, "llm_model": llm_model})
+        self.started.append(
+            {"build_id": build_id, "prompt": prompt, "llm_model": llm_model, "github": github}
+        )
         return f"stub-job-{build_id}"
 
     async def get_status(self, job_id: str) -> dict:

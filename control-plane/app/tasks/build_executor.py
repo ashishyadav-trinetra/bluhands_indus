@@ -61,12 +61,15 @@ class BuildTaskExecutor:
         agent: BluHandsAgentClientProtocol,
         audit: AuditLoggerProtocol,
         backends=None,
+        github_token_resolver=None,
     ) -> None:
         self._builds = builds
         self._tenants = tenants
         self._agent = agent
         self._audit = audit
         self._backends = backends
+        # async (user_id) -> github access token | None (fetched from Nango)
+        self._github_token_resolver = github_token_resolver
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -104,6 +107,9 @@ class BuildTaskExecutor:
                 if backend and backend.api_url:
                     backend_url = backend.api_url
 
+            # Resolve optional GitHub push/pull context (token fetched from Nango).
+            github = await self._github_context(build_run)
+
             # PROVISIONING → BUILDING: submit to agent.
             # The agent service loads the capability manifest by industry itself.
             job_id = await self._agent.start_build(
@@ -114,6 +120,7 @@ class BuildTaskExecutor:
                 llm_model=build_run.llm_model,
                 backend_url=backend_url,
                 publishable_key=publishable_key,
+                github=github,
             )
             build_run.conversation_id = job_id
             await self._transition(build_run, to=BuildStatus.BUILDING)
@@ -161,6 +168,29 @@ class BuildTaskExecutor:
                     f"Agent build timed out after {_POLL_TIMEOUT}s (job_id={job_id})"
                 )
             await asyncio.sleep(min(_POLL_INTERVAL, remaining))
+
+    async def _github_context(self, build_run) -> dict | None:
+        """Build the GitHub push/pull context, resolving the token from Nango.
+
+        Returns None unless the user opted into push or pull on a connected repo.
+        The token is fetched fresh (never stored) via the injected resolver.
+        """
+        repo_url = getattr(build_run, "github_repo_url", None)
+        push = getattr(build_run, "github_push", False)
+        pull = getattr(build_run, "github_pull", False)
+        if not (repo_url and (push or pull)):
+            return None
+        token = None
+        started_by = getattr(build_run, "started_by", None)
+        if self._github_token_resolver and started_by:
+            token = await self._github_token_resolver(started_by)
+        return {
+            "repo_url": repo_url,
+            "token": token,
+            "branch": getattr(build_run, "github_branch", None) or "main",
+            "push": bool(push),
+            "pull": bool(pull),
+        }
 
     async def _transition(self, build_run, *, to: BuildStatus) -> None:
         expected_from = {v: k for k, v in _VALID_TRANSITIONS.items()}.get(to)

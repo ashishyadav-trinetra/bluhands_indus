@@ -43,6 +43,38 @@ export default function AdminUsers() {
     fetchUsers();
   }, [fetchUsers]);
 
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+
+  const changeRole = async (id: string, role: string) => {
+    setBusyId(id);
+    try {
+      await forgeClient.patch(`/api/v1/admin/users/${id}/role`, {
+        platform_role: role,
+      });
+      await fetchUsers();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteUser = async (id: string, email: string) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Delete ${email}? This cannot be undone.`)) return;
+    setBusyId(id);
+    try {
+      await forgeClient.delete(`/api/v1/admin/users/${id}`);
+      await fetchUsers();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const ROLES = ["user", "admin", "tester", "self"];
+
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold text-white">Users</h1>
@@ -56,18 +88,19 @@ export default function AdminUsers() {
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Active</th>
               <th className="px-4 py-3">Joined</th>
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-[#475569]">
+                <td colSpan={6} className="py-12 text-center text-[#475569]">
                   Loading…
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-[#475569]">
+                <td colSpan={6} className="py-12 text-center text-[#475569]">
                   No users found
                 </td>
               </tr>
@@ -97,6 +130,31 @@ export default function AdminUsers() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-[#475569]">
                     {new Date(u.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={u.platform_role}
+                        disabled={busyId === u.id}
+                        onChange={(e) => changeRole(u.id, e.target.value)}
+                        className="rounded-md border border-[#2a2d37] bg-[#0f1117] px-2 py-1 text-xs text-white outline-none disabled:opacity-50"
+                        aria-label="Change role"
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={busyId === u.id}
+                        onClick={() => deleteUser(u.id, u.email)}
+                        className="rounded-md border border-[#2a2d37] px-2 py-1 text-xs text-[#94a3b8] transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

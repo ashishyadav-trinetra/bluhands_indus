@@ -134,6 +134,10 @@ class Settings(BaseSettings):
     model_tester: str = "openrouter/minimax/minimax-01"  # tester role: one fixed model
     model_self: str = "openrouter/qwen/qwen-3.6"  # internal staff: self-hosted Qwen
 
+    # --- GitHub integration (via Nango) ---
+    # The Nango provider_config_key for GitHub (must match your Nango dashboard).
+    nango_github_provider_key: str = "github"
+
     # --- Observability ---
     sentry_dsn: str | None = None
     prometheus_enabled: bool = True

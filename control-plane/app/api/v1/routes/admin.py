@@ -90,6 +90,25 @@ async def set_user_role(
     )
 
 
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    request: Request,
+    user_id: uuid.UUID = Path(...),
+    admin: User = Depends(require_platform_admin),
+    service: AdminService = Depends(get_admin_service),
+):
+    """Soft-delete a user (admin only; cannot delete yourself)."""
+    from fastapi import Response
+
+    await service.delete_user(
+        user_id,
+        acting_user_id=admin.id,
+        actor=f"user:{admin.id}",
+        ip=_client_ip(request),
+    )
+    return Response(status_code=204)
+
+
 @router.get("/orgs", response_model=SuccessResponse[list[AdminOrgView]])
 async def list_orgs(
     request: Request,

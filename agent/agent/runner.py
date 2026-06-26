@@ -51,6 +51,12 @@ class BuildSpec:
     enhanced_prompt: str | None = None
     # LLM model override chosen by the control-plane (per-role gating); None = default
     llm_model: str | None = None
+    # GitHub (user-driven; token fetched by the control-plane from Nango)
+    github_repo_url: str | None = None  # https clone url of the connected repo
+    github_token: str | None = None  # access token (used only inside the sandbox)
+    github_branch: str = "main"
+    github_push: bool = False  # push the generated code after a successful build
+    github_pull: bool = False  # pull latest before building (runner generalization, 2b)
 
 
 @dataclass(frozen=True)
@@ -147,6 +153,16 @@ class OpenHandsRunner:
                     error=f"--skip-agent: no built workspace at {workdir}",
                 )
             self._log(f"resume mode — reusing workspace {workdir} (skipping agent)")
+        elif spec.github_pull and spec.github_repo_url:
+            # Build from the user's existing repo (pull latest), not the starter.
+            self._log("step 1 — cloning the connected GitHub repo into the sandbox…")
+            if not await self._clone_repo(spec, session):
+                return BuildOutcome(success=False, error="git clone failed")
+            if await self._file_exists(session, f"{workdir}/package.json"):
+                self._log("  npm install in sandbox…")
+                inst = await session.run("npm install", cwd=workdir, timeout=600)
+                if not inst.ok:
+                    self._log(f"  npm install failed (non-fatal): {inst.stderr[-300:]}")
         else:
             # 1. Seed products (local HTTP call to Medusa — not in sandbox).
             self._log("step 1/6 — seeding products into Medusa…")
@@ -239,7 +255,62 @@ class OpenHandsRunner:
         self._log("step 6/6 — Playwright self-test…")
         await self._self_test(spec, preview_url)
 
+        # 7. Optional: push the generated code to the user's GitHub repo.
+        await self._maybe_push(spec, session)
+
         return BuildOutcome(success=True, preview_url=preview_url)
+
+    async def _clone_repo(self, spec: BuildSpec, session) -> bool:  # pragma: no cover - needs sandbox
+        """Clone the user's GitHub repo into the (empty) sandbox workdir."""
+        auth_url = spec.github_repo_url or ""
+        if spec.github_token and auth_url.startswith("https://"):
+            auth_url = auth_url.replace(
+                "https://", f"https://x-access-token:{spec.github_token}@", 1
+            )
+        res = await session.run(f'git clone --depth 1 "{auth_url}" .', cwd=session.workdir, timeout=300)
+        if not res.ok:
+            self._log(f"  git clone failed: {(res.stderr or res.stdout)[-300:]}")
+        return res.ok
+
+    async def _file_exists(self, session, path: str) -> bool:  # pragma: no cover - needs sandbox
+        try:
+            await session.read_file(path)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _maybe_push(self, spec: BuildSpec, session) -> None:  # pragma: no cover - needs sandbox
+        """Commit + push the generated code to GitHub, if the user opted in.
+
+        Best-effort: a push failure is logged, never fails the build. The token
+        is used only inside the ephemeral sandbox (destroyed right after).
+        """
+        if not (spec.github_push and spec.github_repo_url and spec.github_token):
+            return
+        self._log("step 7 — pushing generated code to GitHub…")
+        branch = spec.github_branch or "main"
+        auth_url = spec.github_repo_url.replace(
+            "https://", f"https://x-access-token:{spec.github_token}@", 1
+        )
+        script = (
+            "git init -q 2>/dev/null; "
+            'git config user.email "agent@bluhands.dev"; '
+            'git config user.name "BluHands Agent"; '
+            f"git checkout -B {branch} 2>/dev/null; "
+            "git add -A; "
+            'git commit -q -m "BluHands build" 2>/dev/null; '
+            "git remote remove origin 2>/dev/null; "
+            f'git remote add origin "{auth_url}"; '
+            f"git push -u origin {branch} --force"
+        )
+        try:
+            res = await session.run(script, cwd=session.workdir, timeout=180)
+            if not res.ok:
+                self._log(f"  git push failed (non-fatal): {res.stderr[-300:]}")
+            else:
+                self._log("  pushed to GitHub.")
+        except Exception as exc:  # noqa: BLE001 - push is best-effort
+            self._log(f"  git push error (non-fatal): {exc}")
 
     async def _seed(self, spec: BuildSpec) -> None:
         from agent.seeders import run_seeder

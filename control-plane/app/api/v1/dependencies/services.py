@@ -67,6 +67,13 @@ def get_admin_service(session: AsyncSession = Depends(get_db_session)) -> "Admin
     )
 
 
+def get_github_service(settings: Settings = Depends(get_settings)):
+    """Construct a ``GithubService`` (GitHub via Nango)."""
+    from app.services.github_service import GithubService
+
+    return GithubService(settings=settings)
+
+
 def get_tenant_service(
     session: AsyncSession = Depends(get_db_session),
 ) -> TenantService:

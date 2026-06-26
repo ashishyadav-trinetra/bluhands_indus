@@ -132,6 +132,16 @@ class AuthService:
         if existing is not None:
             if external_id and existing.external_id is None:
                 existing.external_id = external_id
+            # Self-heal: ensure the user has an org + owner membership. Users
+            # created before provisioning existed (or by a half-completed first
+            # login) can have none — which leaves them with no org, so they can't
+            # reach settings or create a tenant. Back-fill on next login.
+            memberships = await self._memberships.list_for_user(existing.id)
+            if not memberships:
+                await self._provision_org(
+                    existing, email=email, full_name=full_name, ip=ip,
+                    action="user.provision_supabase_backfill",
+                )
             return existing
 
         user = User(
@@ -143,7 +153,22 @@ class AuthService:
             is_platform_admin=False,
         )
         await self._users.add(user)
+        await self._provision_org(
+            user, email=email, full_name=full_name, ip=ip,
+            action="user.provision_supabase",
+        )
+        return user
 
+    async def _provision_org(
+        self,
+        user: User,
+        *,
+        email: str,
+        full_name: str | None,
+        ip: str | None,
+        action: str,
+    ) -> None:
+        """Create an organization + owner membership + signup-grant wallet for a user."""
         organization = Organization(name=full_name or email.split("@", 1)[0])
         await self._orgs.add(organization)
 
@@ -160,12 +185,11 @@ class AuthService:
             AuditEvent(
                 actor=f"user:{user.id}",
                 org_id=organization.id,
-                action="user.provision_supabase",
+                action=action,
                 target=email,
                 ip=ip,
             )
         )
-        return user
 
     # --- Login -------------------------------------------------------------
 

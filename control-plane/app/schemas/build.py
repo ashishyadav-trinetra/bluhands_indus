@@ -26,6 +26,11 @@ class BuildStartRequest(BaseModel):
         max_length=253,
         description="Domain chosen during onboarding; saved on the tenant row.",
     )
+    # GitHub (user-driven, optional). Token is fetched from Nango at run time.
+    github_repo_url: str | None = Field(default=None, max_length=500)
+    github_branch: str | None = Field(default=None, max_length=200)
+    github_push: bool = False
+    github_pull: bool = False
 
 
 class BuildRunResponse(BaseModel):

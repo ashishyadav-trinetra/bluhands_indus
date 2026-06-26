@@ -83,3 +83,35 @@ class AdminService:
             )
         )
         return user
+
+    async def delete_user(
+        self,
+        user_id: uuid.UUID,
+        *,
+        acting_user_id: uuid.UUID,
+        actor: str,
+        ip: str | None = None,
+    ) -> None:
+        """Soft-delete a user (deactivate + set deleted_at). Cannot delete self.
+
+        Raises:
+            NotFoundError: if the user does not exist.
+            ValidationError: if an admin tries to delete their own account.
+        """
+        import datetime as _dt
+
+        from app.core.exceptions import NotFoundError, ValidationError
+
+        if user_id == acting_user_id:
+            raise ValidationError("You cannot delete your own account")
+
+        user = await self._users.get_by_id(user_id)
+        if user is None:
+            raise NotFoundError("User not found")
+
+        user.is_active = False
+        user.deleted_at = _dt.datetime.now(_dt.timezone.utc)
+
+        await self._audit.record(
+            AuditEvent(actor=actor, action="admin.delete_user", target=str(user_id), ip=ip)
+        )

@@ -11,6 +11,13 @@ import { useForgeMe } from "#/hooks/query/use-forge-me";
 import { useForgeTenants } from "#/hooks/query/use-forge-tenant";
 import { useStartBuild } from "#/hooks/mutation/use-start-build";
 import { useDeleteConversation } from "#/hooks/mutation/use-delete-conversation";
+import { useGithubStatus, useGithubRepos } from "#/hooks/query/use-github";
+
+interface GithubSelection {
+  repo_url: string;
+  push: boolean;
+  pull: boolean;
+}
 
 // ─── Smart LLM-powered clarification overlay ──────────────────────────────────
 interface AgentQuestion {
@@ -24,31 +31,30 @@ interface AgentQuestion {
 
 interface ClarifyOverlayProps {
   prompt: string;
-  onConfirm: (enrichedPrompt: string) => void;
+  initialQuestions: AgentQuestion[];
+  onConfirm: (enrichedPrompt: string, github?: GithubSelection) => void;
   onBack: () => void;
   isPending: boolean;
 }
 
-function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlayProps) {
-  const [questions, setQuestions] = React.useState<AgentQuestion[]>([]);
-  const [loading, setLoading] = React.useState(true);
+function ClarifyOverlay({ prompt, initialQuestions, onConfirm, onBack, isPending }: ClarifyOverlayProps) {
+  // Questions are pre-fetched by the caller (the overlay only opens when the
+  // agent actually has questions — otherwise we build immediately, no dialog).
+  const [questions] = React.useState<AgentQuestion[]>(initialQuestions);
   const [answers, setAnswers] = React.useState<Record<string, string | string[]>>({});
   const [activeQ, setActiveQ] = React.useState(0);
   const [enhancing, setEnhancing] = React.useState(false);
 
-  // Fetch smart questions from the agent
-  React.useEffect(() => {
-    import("#/api/bluhands-service/forge-axios").then(({ forgeClient }) => {
-      forgeClient
-        .post<{ questions: AgentQuestion[] }>("/api/v1/agent/clarify", { prompt })
-        .then((r) => {
-          const qs = r.data?.questions ?? [];
-          setQuestions(qs);
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
-    });
-  }, [prompt]);
+  // ── GitHub (optional) ──────────────────────────────────────────────────────
+  const { data: ghStatus } = useGithubStatus();
+  const ghConnected = !!ghStatus?.connected;
+  const { data: ghRepos } = useGithubRepos(ghConnected);
+  const [repoUrl, setRepoUrl] = React.useState("");
+  const [ghPush, setGhPush] = React.useState(false);
+  const [ghPull, setGhPull] = React.useState(false);
+  const githubSelection: GithubSelection | undefined = repoUrl
+    ? { repo_url: repoUrl, push: ghPush, pull: ghPull }
+    : undefined;
 
   const pickSingle = (qId: string, option: string) => {
     setAnswers((prev) => ({ ...prev, [qId]: option }));
@@ -67,13 +73,6 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
     });
   };
 
-  const allAnswered = questions.every((q) => {
-    const a = answers[q.id];
-    if (q.kind === "text") return typeof a === "string" && a.trim().length > 0;
-    if (q.kind === "multi") return Array.isArray(a) && a.length > 0;
-    return typeof a === "string" && a.length > 0;
-  });
-
   const handleConfirm = async () => {
     setEnhancing(true);
     try {
@@ -90,10 +89,10 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
         prompt,
         clarifications: formattedAnswers,
       });
-      onConfirm(r.data?.enhanced_prompt || prompt);
+      onConfirm(r.data?.enhanced_prompt || prompt, githubSelection);
     } catch {
       // Fallback: use raw prompt if enhance fails
-      onConfirm(prompt);
+      onConfirm(prompt, githubSelection);
     } finally {
       setEnhancing(false);
     }
@@ -128,15 +127,7 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
 
         {/* Body */}
         <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <div className="w-6 h-6 border-2 border-[#3b82f6]/30 border-t-[#3b82f6] rounded-full animate-spin" />
-              <p className="text-xs text-[#555]">Thinking about your project…</p>
-            </div>
-          ) : questions.length === 0 ? (
-            <p className="text-sm text-[#666] text-center py-8">No questions needed — ready to build!</p>
-          ) : (
-            questions.map((q, qi) => {
+          {questions.map((q, qi) => {
               // All questions are reachable at once — sequential gating used to
               // trap text questions (typing didn't advance the unlock), which
               // left later questions greyed out and "Start building" disabled.
@@ -196,7 +187,56 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
                   )}
                 </div>
               );
-            })
+            })}
+        </div>
+
+        {/* GitHub (optional) */}
+        <div className="px-6 py-4 border-t border-[#1e2028]">
+          <p className="text-[11px] text-[#3b82f6] font-medium uppercase tracking-wider mb-2">
+            GitHub (optional)
+          </p>
+          {ghConnected ? (
+            <div className="space-y-2">
+              <select
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                disabled={busy}
+                className="w-full bg-[#111318] border border-[#2a2d37] rounded-lg px-3 py-2 text-[12px] text-white outline-none focus:border-[#3b82f6]/50"
+              >
+                <option value="">Don&apos;t use a repo</option>
+                {ghRepos?.map((r) => (
+                  <option key={r.clone_url} value={r.clone_url}>
+                    {r.full_name}
+                  </option>
+                ))}
+              </select>
+              {repoUrl && (
+                <div className="flex flex-col gap-1.5 pl-0.5">
+                  <label className="flex items-center gap-2 text-[12px] text-[#9099ac] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ghPull}
+                      onChange={(e) => setGhPull(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Pull latest from this repo before building
+                  </label>
+                  <label className="flex items-center gap-2 text-[12px] text-[#9099ac] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ghPush}
+                      onChange={(e) => setGhPush(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Push the generated code to this repo after building
+                  </label>
+                </div>
+              )}
+            </div>
+          ) : (
+            <a href="/connectors" className="text-[12px] text-[#3b82f6] hover:underline">
+              Connect GitHub to push/pull code →
+            </a>
           )}
         </div>
 
@@ -207,7 +247,7 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
           </button>
           <button
             type="button"
-            disabled={loading || (questions.length > 0 && !allAnswered) || busy}
+            disabled={busy}
             onClick={handleConfirm}
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-30 disabled:cursor-not-allowed text-white text-[13px] font-medium transition-colors"
           >
@@ -220,7 +260,7 @@ function ClarifyOverlay({ prompt, onConfirm, onBack, isPending }: ClarifyOverlay
         </div>
 
         {/* Progress dots */}
-        {!loading && questions.length > 0 && (
+        {questions.length > 0 && (
           <div className="flex justify-center gap-1.5 pb-4">
             {questions.map((q, qi) => (
               <div key={q.id} className={`h-1 rounded-full transition-all duration-300 ${answers[q.id] !== undefined ? "w-4 bg-[#3b82f6]" : qi === activeQ ? "w-2 bg-[#3b82f6]/50" : "w-1.5 bg-[#2a2d37]"}`} />
@@ -328,8 +368,11 @@ function HomeScreen() {
   const [promptValue, setPromptValue] = React.useState("");
   const [attachedImages, setAttachedImages] = React.useState<File[]>([]);
   const [showModelMenu, setShowModelMenu] = React.useState(false);
-  const [clarifyPrompt, setClarifyPrompt] = React.useState<string | null>(null);
+  const [clarify, setClarify] = React.useState<{ prompt: string; questions: AgentQuestion[] } | null>(null);
+  const [checking, setChecking] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const uiBusy = isPending || checking;
 
   const userName = settings?.git_user_name || user.data?.login || "there";
   const firstName = userName.split(" ")[0];
@@ -354,11 +397,11 @@ function HomeScreen() {
   // Called with the final (possibly enriched) prompt.
   // If the user has a forge tenant, creates a control-plane build and navigates
   // to the build progress page. Otherwise falls back to an OpenHands conversation.
-  const handleCreateWithPrompt = (prompt: string) => {
+  const handleCreateWithPrompt = (prompt: string, github?: GithubSelection) => {
     if (isPending) return;
     if (forgeTenant && forgeOrgId) {
       startBuild(
-        { orgId: forgeOrgId, tenantId: forgeTenant.id, prompt },
+        { orgId: forgeOrgId, tenantId: forgeTenant.id, prompt, github },
         {
           onSuccess: (build) =>
             navigate(`/forge/build/${forgeOrgId}/${forgeTenant.id}/${build.id}`),
@@ -373,19 +416,40 @@ function HomeScreen() {
     }
   };
 
-  // Starter chips open the smart clarify overlay just like a manual prompt.
-  const handleStarterClick = (prompt: string) => {
-    if (isPending) return;
-    setClarifyPrompt(prompt);
+  // The smart entry point: ask the agent if it needs anything. If it returns 0
+  // questions (the common case), build IMMEDIATELY — no dialog. Only when the
+  // agent has real questions do we pop the MCQ/free-text overlay. Any error →
+  // just build.
+  const beginBuild = async (prompt: string) => {
+    const trimmed = prompt.trim();
+    if (!trimmed || uiBusy) return;
+    setChecking(true);
+    try {
+      const { forgeClient } = await import("#/api/bluhands-service/forge-axios");
+      const r = await forgeClient.post<{ questions: AgentQuestion[] }>(
+        "/api/v1/agent/clarify",
+        { prompt: trimmed },
+      );
+      const qs = r.data?.questions ?? [];
+      if (qs.length === 0) {
+        handleCreateWithPrompt(trimmed);
+      } else {
+        setClarify({ prompt: trimmed, questions: qs });
+      }
+    } catch {
+      handleCreateWithPrompt(trimmed); // never block building on a clarify hiccup
+    } finally {
+      setChecking(false);
+    }
   };
 
-  // Main submit: show clarification overlay instead of creating immediately.
+  const handleStarterClick = (prompt: string) => {
+    void beginBuild(prompt);
+  };
+
   const handlePromptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = promptValue.trim();
-    if (trimmed) {
-      setClarifyPrompt(trimmed);
-    }
+    void beginBuild(promptValue);
   };
 
   return (
@@ -485,21 +549,21 @@ function HomeScreen() {
                 value={promptValue}
                 onChange={(e) => setPromptValue(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && promptValue.trim() && !isPending) {
+                  if (e.key === "Enter" && promptValue.trim() && !uiBusy) {
                     e.preventDefault();
-                    setClarifyPrompt(promptValue.trim());
+                    void beginBuild(promptValue);
                   }
                 }}
                 className="flex-1 bg-transparent text-sm text-white placeholder-[#555] outline-none"
-                disabled={isPending}
+                disabled={uiBusy}
                 autoFocus
               />
               <button
                 type="submit"
-                disabled={isPending || !promptValue.trim()}
+                disabled={uiBusy || !promptValue.trim()}
                 className="ml-3 w-9 h-9 rounded-full bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0"
               >
-                {isPending ? (
+                {uiBusy ? (
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
                   <svg
@@ -648,7 +712,7 @@ function HomeScreen() {
                 key={starter.title}
                 type="button"
                 onClick={() => handleStarterClick(starter.prompt)}
-                disabled={isPending}
+                disabled={uiBusy}
                 className="group shrink-0 border border-[#2a2d37]/60 rounded-xl bg-[#111318]/50 hover:bg-[#1a1c22]/80 hover:border-[#3b82f6]/30 disabled:opacity-50 flex items-center gap-2.5 px-4 py-3 text-left transition-all duration-200 cursor-pointer"
               >
                 <span className="text-lg">{starter.icon}</span>
@@ -753,15 +817,16 @@ function HomeScreen() {
         </div>
       )}
 
-      {/* Clarification overlay — shown after the user submits a prompt */}
-      {clarifyPrompt && (
+      {/* Clarification overlay — only shown when the agent actually has questions */}
+      {clarify && (
         <ClarifyOverlay
-          prompt={clarifyPrompt}
+          prompt={clarify.prompt}
+          initialQuestions={clarify.questions}
           isPending={isPending}
-          onBack={() => setClarifyPrompt(null)}
-          onConfirm={(enriched) => {
-            setClarifyPrompt(null);
-            handleCreateWithPrompt(enriched);
+          onBack={() => setClarify(null)}
+          onConfirm={(enriched, github) => {
+            setClarify(null);
+            handleCreateWithPrompt(enriched, github);
           }}
         />
       )}

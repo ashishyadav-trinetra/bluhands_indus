@@ -40,6 +40,9 @@ RUN if [ "$INSTALL_AGENT" = "1" ]; then \
 # ---- runtime: minimal, non-root --------------------------------------------
 FROM python:3.12-slim AS runtime
 
+# Repeat the build arg so the runtime stage can react to it.
+ARG INSTALL_AGENT=0
+
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -47,6 +50,17 @@ ENV PATH="/opt/venv/bin:$PATH" \
     AGENT_PORT=8100 \
     AGENT_DRY_RUN=true \
     AGENT_SANDBOX_PROVIDER=local
+
+# For REAL builds in LOCAL sandbox mode the agent runs npm/git IN THIS CONTAINER,
+# so it needs Node + git. (In e2b mode the build toolchain lives in the sandbox
+# template instead, but having node/git here is harmless and enables local mode.)
+RUN if [ "$INSTALL_AGENT" = "1" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends curl git ca-certificates \
+      && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+      && apt-get install -y --no-install-recommends nodejs \
+      && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Non-root runtime user.
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid agent --create-home agent

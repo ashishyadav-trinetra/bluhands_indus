@@ -83,6 +83,7 @@ class BluHandsAgentClientProtocol(Protocol):
         backend_url: str | None = None,
         publishable_key: str = "",
         manifest: dict | None = None,
+        github: dict | None = None,
     ) -> str:
         """Submit a build job; returns an opaque job_id."""
         ...

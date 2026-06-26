@@ -57,6 +57,22 @@ export interface TenantResponse {
 export interface BuildStartRequest {
   prompt: string;
   idempotency_key?: string;
+  // GitHub (optional, user-driven)
+  github_repo_url?: string;
+  github_branch?: string;
+  github_push?: boolean;
+  github_pull?: boolean;
+}
+
+export interface GithubStatus {
+  connected: boolean;
+}
+
+export interface GithubRepo {
+  name: string;
+  full_name: string;
+  private: boolean;
+  clone_url: string;
 }
 
 export interface BuildRunResponse {

@@ -122,6 +122,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             clarifications=payload.clarifications,
             enhanced_prompt=payload.enhanced_prompt,
             llm_model=payload.llm_model,
+            github_repo_url=payload.github_repo_url,
+            github_token=payload.github_token,
+            github_branch=payload.github_branch,
+            github_push=payload.github_push,
+            github_pull=payload.github_pull,
         )
         try:
             job_id = await store.start(spec)

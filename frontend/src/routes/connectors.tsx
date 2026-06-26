@@ -242,10 +242,11 @@ export default function ConnectorsPage() {
 
       // 2. Dynamically import Nango SDK and open ConnectUI
       const { default: Nango } = await import("@nangohq/frontend");
-      const nango = new Nango();
+      const nango = new Nango({});
       await new Promise<void>((resolve, reject) => {
-        const connect = nango.openConnectUI({
-          onEvent: (event: { type: string; payload?: { connectionId?: string } }) => {
+        nango.openConnectUI({
+          sessionToken: data.session_token,
+          onEvent: (event) => {
             if (event.type === "close") reject(new Error("cancelled"));
             if (event.type === "connect") {
               setConnections((prev) => [
@@ -256,7 +257,6 @@ export default function ConnectorsPage() {
             }
           },
         });
-        connect.setSessionToken(data.session_token);
       });
     } catch (e) {
       if (e instanceof Error && e.message !== "cancelled") {

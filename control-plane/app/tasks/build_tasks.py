@@ -88,13 +88,24 @@ async def _execute(build_id: str) -> None:
     from app.tasks.agent_client import get_agent_client
     from app.tasks.build_executor import BuildTaskExecutor
 
+    settings = get_settings()
+
+    async def _github_token(user_id):
+        from app.services.github_service import GithubService
+
+        try:
+            return await GithubService(settings=settings).get_token(user_id)
+        except Exception:  # noqa: BLE001 - missing/failed GitHub token must not fail the build
+            return None
+
     async with task_session() as session:
         executor = BuildTaskExecutor(
             builds=BuildRunRepository(session),
             tenants=TenantRepository(session),
-            agent=get_agent_client(get_settings()),
+            agent=get_agent_client(settings),
             audit=AuditRepository(session),
             backends=BackendRepository(session),
+            github_token_resolver=_github_token,
         )
         await executor.execute(build_id)
 
