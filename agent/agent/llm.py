@@ -32,7 +32,11 @@ def build_llm(settings: Settings, model: str | None = None):
 
     # LiteLLM routes `openrouter/...` models to https://openrouter.ai/api/v1
     # automatically when OPENROUTER_API_KEY is set; passing api_key is explicit.
-    return LLM(model=model or settings.llm_model, api_key=SecretStr(api_key))
+    return LLM(
+        model=model or settings.llm_model,
+        api_key=SecretStr(api_key),
+        max_output_tokens=settings.llm_max_output_tokens,
+    )
 
 
 def make_completion(settings: Settings):
@@ -57,6 +61,7 @@ def make_completion(settings: Settings):
                 {"role": "user", "content": user},
             ],
             temperature=0.2,
+            max_tokens=2048,
             response_format={"type": "json_object"},
         )
         return resp.choices[0].message.content or ""

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # OpenRouter slug (litellm needs the `openrouter/` prefix). Override via
     # AGENT_LLM_MODEL. Old `claude-3.5-sonnet` is retired on OpenRouter.
     llm_model: str = "openrouter/anthropic/claude-sonnet-4.5"
+    # Cap per-request output tokens. The SDK default (64 000) exceeds the token
+    # balance at low OpenRouter credit levels, causing 402s. 16 000 is ample for
+    # a single agent step and keeps credit spend predictable.
+    llm_max_output_tokens: int = 16000
 
     # --- Server ---
     host: str = "0.0.0.0"
