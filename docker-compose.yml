@@ -25,11 +25,11 @@ services:
   # preview, App/Changes/Code tabs). The frontend connects here for all
   # interactive conversation sessions.
   openhands:
-    image: docker.all-hands.dev/all-hands-ai/openhands:0.38
+    image: ghcr.io/all-hands-ai/openhands:0.38
     pull_policy: always
     environment:
       # Sandbox — mount Docker socket so OpenHands can spin up runtime containers.
-      SANDBOX_RUNTIME_CONTAINER_IMAGE: docker.all-hands.dev/all-hands-ai/runtime:0.38-nikolaik
+      SANDBOX_RUNTIME_CONTAINER_IMAGE: ghcr.io/all-hands-ai/runtime:0.38-nikolaik
       SANDBOX_VOLUMES: "/opt/workspace_base:/workspace:rw"
       # LLM — via OpenRouter (same key as the agent).
       LLM_MODEL: "${OPENHANDS_LLM_MODEL:-openrouter/anthropic/claude-sonnet-4-5}"
