@@ -22,17 +22,26 @@ UUID = postgresql.UUID(as_uuid=True)
 
 
 def upgrade() -> None:
-    op.add_column("build_runs", sa.Column("started_by", UUID, nullable=True))
-    op.add_column("build_runs", sa.Column("github_repo_url", sa.String(length=500), nullable=True))
-    op.add_column("build_runs", sa.Column("github_branch", sa.String(length=200), nullable=True))
-    op.add_column(
-        "build_runs",
-        sa.Column("github_push", sa.Boolean(), nullable=False, server_default="false"),
-    )
-    op.add_column(
-        "build_runs",
-        sa.Column("github_pull", sa.Boolean(), nullable=False, server_default="false"),
-    )
+    conn = op.get_bind()
+    existing = {
+        row[0]
+        for row in conn.execute(
+            sa.text(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_name='build_runs'"
+            )
+        )
+    }
+
+    def add_if_missing(col_name: str, column: sa.Column) -> None:
+        if col_name not in existing:
+            op.add_column("build_runs", column)
+
+    add_if_missing("started_by", sa.Column("started_by", UUID, nullable=True))
+    add_if_missing("github_repo_url", sa.Column("github_repo_url", sa.String(length=500), nullable=True))
+    add_if_missing("github_branch", sa.Column("github_branch", sa.String(length=200), nullable=True))
+    add_if_missing("github_push", sa.Column("github_push", sa.Boolean(), nullable=False, server_default="false"))
+    add_if_missing("github_pull", sa.Column("github_pull", sa.Boolean(), nullable=False, server_default="false"))
 
 
 def downgrade() -> None:
