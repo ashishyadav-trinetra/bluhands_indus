@@ -13,6 +13,7 @@ interface Props {
   nextLabel?: string;
   nextDisabled?: boolean;
   showBack?: boolean;
+  hideNext?: boolean;
 }
 
 export function StepShell({
@@ -23,6 +24,7 @@ export function StepShell({
   nextLabel = "Continue",
   nextDisabled = false,
   showBack = true,
+  hideNext = false,
 }: Props) {
   const { state, dispatch } = useOnboarding();
 
@@ -45,10 +47,12 @@ export function StepShell({
         ) : (
           <span />
         )}
-        <Button onClick={handleNext} disabled={nextDisabled}>
-          {nextLabel}
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        {!hideNext && (
+          <Button onClick={handleNext} disabled={nextDisabled}>
+            {nextLabel}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </section>
   );

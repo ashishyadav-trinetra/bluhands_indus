@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
+import { ErrorCard, categoriseError } from "@/components/ui/error-card";
 import { getApi } from "@/lib/api";
 import { useOnboarding } from "@/lib/state";
 import type { ClarifyAnswer, ClarifyQuestion } from "@/lib/types";
@@ -79,7 +80,7 @@ function QuestionCard({
 
 // ---- Main component ----
 
-type Phase = "summary" | "clarifying" | "clarify-answers" | "enhancing" | "plan" | "building";
+type Phase = "clarifying" | "clarify-error" | "clarify-answers" | "enhancing" | "enhance-error" | "plan" | "building" | "build-error";
 
 function buildPrompt(data: ReturnType<typeof useOnboarding>["state"]["data"]): string {
   const { business, brand, catalog } = data;
@@ -99,25 +100,17 @@ function buildPrompt(data: ReturnType<typeof useOnboarding>["state"]["data"]): s
 export function ReviewStep() {
   const { state, dispatch } = useOnboarding();
   const { account, business, brand, catalog, domain } = state.data;
-  const [phase, setPhase] = useState<Phase>("summary");
+  const [phase, setPhase] = useState<Phase>("clarifying");
   const [answers, setAnswers] = useState<ClarifyAnswer[]>([]);
   const [planSummary, setPlanSummary] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const namedProducts = catalog.products.filter((p) => p.name.trim() !== "");
 
-  // Auto-load clarify questions when we reach this step.
-  useEffect(() => {
-    if (state.clarifyQuestions) {
-      const initial = state.clarifyQuestions.map((q) => ({
-        question_id: q.id,
-        selected: [] as string[],
-      }));
-      setAnswers(initial);
-      setPhase("clarify-answers");
-      return;
-    }
+  const runClarify = () => {
     setPhase("clarifying");
+    setErrorMsg(null);
     const prompt = buildPrompt(state.data);
     getApi()
       .clarify({
@@ -136,18 +129,33 @@ export function ReviewStep() {
         setAnswers(initial);
         setPhase("clarify-answers");
       })
-      .catch(() => {
-        // If clarify fails, skip straight to plain review.
-        setPhase("summary");
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setErrorMsg(msg);
+        setPhase("clarify-error");
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  };
+
+  // Auto-load clarify questions when we reach this step.
+  useEffect(() => {
+    if (state.clarifyQuestions) {
+      const initial = state.clarifyQuestions.map((q) => ({
+        question_id: q.id,
+        selected: [] as string[],
+      }));
+      setAnswers(initial);
+      setPhase("clarify-answers");
+      return;
+    }
+    runClarify();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const questions = state.clarifyQuestions ?? [];
 
   const onEnhance = async () => {
     setPhase("enhancing");
-    setError(null);
+    setErrorMsg(null);
     dispatch({ type: "setClarifyAnswers", answers });
     try {
       const prompt = buildPrompt(state.data);
@@ -160,14 +168,15 @@ export function ReviewStep() {
       setPlanSummary(result.summary);
       setPhase("plan");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Enhancement failed.");
-      setPhase("clarify-answers");
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrorMsg(msg);
+      setPhase("enhance-error");
     }
   };
 
   const onBuild = async () => {
     setPhase("building");
-    setError(null);
+    setErrorMsg(null);
     try {
       const orgId = state.orgId ?? "current";
       const tenantId = state.tenantId ?? "current";
@@ -183,40 +192,71 @@ export function ReviewStep() {
       dispatch({ type: "setBuild", buildId });
       dispatch({ type: "next" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start build.");
-      setPhase("plan");
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrorMsg(msg);
+      setPhase("build-error");
     }
   };
 
-  // --- Summary phase (shown while clarify loads) ---
-  if (phase === "summary" || phase === "clarifying") {
+  // ── Clarifying spinner ───────────────────────────────────────────────────
+  if (phase === "clarifying") {
     return (
       <StepShell
         title="Review & build"
-        description="Confirm the details. Then we'll build and deploy your store."
-        onNext={() => {}} // disabled while loading
-        nextLabel={phase === "clarifying" ? "Loading questions…" : "Continue"}
+        description="We're generating a few questions to personalise your build…"
+        onNext={() => {}}
+        nextLabel="Loading questions…"
         nextDisabled
       >
-        <div>
-          <Row label="Account" value={`${account.fullName} · ${account.email}`} />
-          <Row label="Store" value={`${business.storeName} (${business.category})`} />
-          <Row label="Currency" value={`${business.currency} · ${business.country}`} />
-          <Row label="Brand" value={`${brand.vibe}${brand.tagline ? ` · "${brand.tagline}"` : ""}`} />
-          <Row label="Catalog" value={namedProducts.length === 0 ? "No products yet" : `${namedProducts.length} product${namedProducts.length === 1 ? "" : "s"}`} />
-          <Row label="Web address" value={domain.domain || "—"} />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Talking to the AI…</span>
         </div>
-        {phase === "clarifying" && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Loading a few questions to personalise your build…</span>
-          </div>
-        )}
       </StepShell>
     );
   }
 
-  // --- Clarify answers phase ---
+  // ── Clarify failed ───────────────────────────────────────────────────────
+  if (phase === "clarify-error") {
+    return (
+      <StepShell
+        title="Review & build"
+        description=""
+        onNext={() => {}}
+        nextLabel=""
+        nextDisabled
+        hideNext
+      >
+        <ErrorCard
+          error={errorMsg}
+          category={categoriseError(errorMsg)}
+          title="Couldn't load personalisation questions"
+          detail="The AI question step failed. You can retry, or skip straight to reviewing your summary."
+          onRetry={() => {
+            setRetrying(true);
+            runClarify();
+            setRetrying(false);
+          }}
+          retrying={retrying}
+          retryLabel="Retry questions"
+        />
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setErrorMsg(null);
+              setPhase("clarify-answers");
+            }}
+            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Skip questions and continue
+          </button>
+        </div>
+      </StepShell>
+    );
+  }
+
+  // ── Clarify answers ──────────────────────────────────────────────────────
   if (phase === "clarify-answers") {
     const answered = answers.every(
       (a) => a.selected.length > 0 || (a.other && a.other.trim() !== ""),
@@ -243,12 +283,11 @@ export function ReviewStep() {
             />
           ))}
         </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
       </StepShell>
     );
   }
 
-  // --- Enhancing spinner ---
+  // ── Enhancing spinner ────────────────────────────────────────────────────
   if (phase === "enhancing") {
     return (
       <StepShell title="Planning your build" description="" onNext={() => {}} nextLabel="Please wait…" nextDisabled>
@@ -260,7 +299,43 @@ export function ReviewStep() {
     );
   }
 
-  // --- Plan review phase ---
+  // ── Enhance failed ───────────────────────────────────────────────────────
+  if (phase === "enhance-error") {
+    return (
+      <StepShell
+        title="Planning your build"
+        description=""
+        onNext={() => {}}
+        nextLabel=""
+        nextDisabled
+        hideNext
+      >
+        <ErrorCard
+          error={errorMsg}
+          category={categoriseError(errorMsg)}
+          title="Couldn't generate your build plan"
+          detail="The AI plan step failed. You can retry with the same answers, or go back and change them."
+          onRetry={onEnhance}
+          retrying={phase === "enhancing"}
+          retryLabel="Retry plan"
+        />
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setErrorMsg(null);
+              setPhase("clarify-answers");
+            }}
+            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            ← Back to questions
+          </button>
+        </div>
+      </StepShell>
+    );
+  }
+
+  // ── Plan review ──────────────────────────────────────────────────────────
   if (phase === "plan") {
     return (
       <StepShell
@@ -283,12 +358,47 @@ export function ReviewStep() {
         <p className="text-xs text-muted-foreground">
           Building usually takes a couple of minutes. You can watch the progress on the next screen.
         </p>
-        {error && <p className="text-sm text-destructive">{error}</p>}
       </StepShell>
     );
   }
 
-  // --- Building spinner (brief, before transition to BuildStep) ---
+  // ── Build start failed ───────────────────────────────────────────────────
+  if (phase === "build-error") {
+    return (
+      <StepShell
+        title="Your build plan"
+        description=""
+        onNext={() => {}}
+        nextLabel=""
+        nextDisabled
+        hideNext
+      >
+        <ErrorCard
+          error={errorMsg}
+          category={categoriseError(errorMsg)}
+          title="Couldn't start your build"
+          detail="The server rejected the build request. Check the details below and retry."
+          onRetry={onBuild}
+          retrying={phase === "building"}
+          retryLabel="Retry starting build"
+        />
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setErrorMsg(null);
+              setPhase("plan");
+            }}
+            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            ← Back to plan
+          </button>
+        </div>
+      </StepShell>
+    );
+  }
+
+  // ── Submitting spinner (brief, before transition to BuildStep) ───────────
   return (
     <StepShell title="Starting build…" description="" onNext={() => {}} nextLabel="Please wait…" nextDisabled>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
