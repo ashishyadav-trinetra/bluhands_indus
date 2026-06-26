@@ -10,7 +10,7 @@ import { HomepageCTA } from "#/components/features/home/homepage-cta";
 import { isCTADismissed } from "#/utils/local-storage";
 import { useForgeMe } from "#/hooks/query/use-forge-me";
 import { useForgeTenants } from "#/hooks/query/use-forge-tenant";
-import { useStartBuild } from "#/hooks/mutation/use-start-build";
+// useStartBuild removed — all builds now go through OpenHands conversations
 import { useDeleteConversation } from "#/hooks/mutation/use-delete-conversation";
 import { useGithubStatus, useGithubRepos } from "#/hooks/query/use-github";
 
@@ -352,11 +352,10 @@ function HomeScreen() {
   const { data: forgeMe } = useForgeMe();
   const forgeOrgId = forgeMe?.memberships[0]?.org_id;
   const { data: forgeTenants } = useForgeTenants(forgeOrgId);
-  const forgeTenant = forgeTenants?.[0] ?? null;
-  const { mutate: startBuild, isPending: isBuildPending } = useStartBuild();
+  const forgeTenant = forgeTenants?.[0] ?? null; // kept for industry-nudge hidden ref
   const { mutate: deleteConversation } = useDeleteConversation();
 
-  const isPending = isBuildPending || isConversationPending;
+  const isPending = isConversationPending;
 
   const conversations =
     conversationData?.pages.flatMap((page) => page.items) ?? [];
@@ -397,37 +396,18 @@ function HomeScreen() {
   };
 
   // Called with the final (possibly enriched) prompt.
-  // If the user has a forge tenant, creates a control-plane build and navigates
-  // to the build progress page. Otherwise falls back to an OpenHands conversation.
-  const handleCreateWithPrompt = (prompt: string, github?: GithubSelection) => {
+  // Always opens an OpenHands conversation so the user gets the live agent view
+  // (VSCode, terminal, App/Changes/Code tabs). The enriched prompt makes the
+  // agent work autonomously — no back-and-forth needed.
+  const handleCreateWithPrompt = (prompt: string, _github?: GithubSelection) => {
     if (isPending) return;
-    if (forgeTenant && forgeOrgId) {
-      startBuild(
-        { orgId: forgeOrgId, tenantId: forgeTenant.id, prompt, github },
-        {
-          onSuccess: (build) =>
-            navigate(`/forge/build/${forgeOrgId}/${forgeTenant.id}/${build.id}`),
-          onError: (err: unknown) => {
-            const e = err as {
-              response?: { status?: number; data?: { error?: { code?: string } } };
-            };
-            const status = e?.response?.status;
-            const code = e?.response?.data?.error?.code;
-            if (status === 402 || code === "UPGRADE_REQUIRED") {
-              setShowUpgrade(true); // friendly upgrade popup, not a raw error
-            } else {
-              toast.error("Couldn't start the build. Please try again.");
-            }
-          },
-        },
-      );
-    } else {
-      // No Forge org/tenant yet — the old OpenHands conversation path is a dead
-      // end on this deployment (no conversation backend), which left the agent
-      // stuck on "Starting". Send the user to setup to provision a tenant; carry
-      // the prompt so the build can resume afterwards.
-      navigate("/forge/setup", { state: { pendingPrompt: prompt } });
-    }
+    createConversation(
+      { query: prompt },
+      {
+        onSuccess: (data) => navigate(`/conversations/${data.conversation_id}`),
+        onError: () => toast.error("Couldn't start the build. Please try again."),
+      },
+    );
   };
 
   // The smart entry point: ask the agent if it needs anything. If it returns 0

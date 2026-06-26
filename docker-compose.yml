@@ -21,6 +21,42 @@ include:
 # api/worker services pick them up without conflicting with the include.
 
 services:
+  # OpenHands server — provides the live agent view (VSCode, terminal, browser
+  # preview, App/Changes/Code tabs). The frontend connects here for all
+  # interactive conversation sessions.
+  openhands:
+    image: docker.all-hands.dev/all-hands-ai/openhands:0.38
+    pull_policy: always
+    environment:
+      # Sandbox — mount Docker socket so OpenHands can spin up runtime containers.
+      SANDBOX_RUNTIME_CONTAINER_IMAGE: docker.all-hands.dev/all-hands-ai/runtime:0.38-nikolaik
+      SANDBOX_VOLUMES: "/opt/workspace_base:/workspace:rw"
+      # LLM — via OpenRouter (same key as the agent).
+      LLM_MODEL: "${OPENHANDS_LLM_MODEL:-openrouter/anthropic/claude-sonnet-4-5}"
+      LLM_API_KEY: "${OPENROUTER_API_KEY:-}"
+      LLM_BASE_URL: "https://openrouter.ai/api/v1"
+      LLM_CUSTOM_LLM_PROVIDER: "openrouter"
+      # Workspace
+      WORKSPACE_MOUNT_PATH: /opt/workspace_base
+      # Auth — simple shared secret (frontend sends Supabase token; OpenHands
+      # doesn't need to verify it because auth is already enforced at nginx).
+      CORS_ALLOWED_ORIGINS: "*"
+      # E2B fallback (optional — set E2B_API_KEY + SANDBOX_RUNTIME=e2b in env)
+      SANDBOX_RUNTIME: "${OPENHANDS_SANDBOX_RUNTIME:-local}"
+      E2B_API_KEY: "${E2B_API_KEY:-}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - openhands_workspace:/opt/workspace_base
+    ports:
+      - "3000:3000"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:3000/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   # The autonomous coding agent (OpenHands SDK + E2B sandbox).
   agent:
     build:
@@ -107,4 +143,5 @@ services:
 volumes:
   bluhands_promdata:
   bluhands_grafanadata:
-  bluhands_builds:   # agent workspace — persists generated code across restarts
+  bluhands_builds:      # agent workspace — persists generated code across restarts
+  openhands_workspace:  # OpenHands conversation workspace
