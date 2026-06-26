@@ -21,41 +21,37 @@ include:
 # api/worker services pick them up without conflicting with the include.
 
 services:
-  # OpenHands server — provides the live agent view (VSCode, terminal, browser
-  # preview, App/Changes/Code tabs). The frontend connects here for all
-  # interactive conversation sessions.
+  # OpenHands OSS app-server (vendored in ./openhands-server). Serves the v1 API
+  # the frontend needs: /api/v1/settings, agent-schema, skills, secrets,
+  # conversations. nginx routes settings|skills|secrets here; forge owns the rest
+  # of /api/v1. Auth is OPEN (no SESSION_API_KEY) — forge enforces real auth.
   openhands:
-    image: ghcr.io/all-hands-ai/openhands:0.38
-    pull_policy: always
+    build:
+      context: ./openhands-server
+      dockerfile: Dockerfile
     environment:
-      # Sandbox — mount Docker socket so OpenHands can spin up runtime containers.
-      SANDBOX_RUNTIME_CONTAINER_IMAGE: ghcr.io/all-hands-ai/runtime:0.38-nikolaik
-      SANDBOX_VOLUMES: "/opt/workspace_base:/workspace:rw"
-      # LLM — via OpenRouter (same key as the agent).
-      LLM_MODEL: "${OPENHANDS_LLM_MODEL:-openrouter/anthropic/claude-sonnet-4-5}"
-      LLM_API_KEY: "${OPENROUTER_API_KEY:-}"
-      LLM_BASE_URL: "https://openrouter.ai/api/v1"
-      LLM_CUSTOM_LLM_PROVIDER: "openrouter"
-      # Workspace
-      WORKSPACE_MOUNT_PATH: /opt/workspace_base
-      # Auth — simple shared secret (frontend sends Supabase token; OpenHands
-      # doesn't need to verify it because auth is already enforced at nginx).
+      # OSS mode: no SESSION_API_KEY → settings/skills endpoints return JSON
+      # without auth. (Do NOT set SESSION_API_KEY here, or the UI gets 401s.)
+      SERVE_FRONTEND: "false"           # the `frontend` service serves the UI
+      RUNTIME: "process"                # in-container process sandbox for convos
       CORS_ALLOWED_ORIGINS: "*"
-      # E2B fallback (optional — set E2B_API_KEY + SANDBOX_RUNTIME=e2b in env)
-      SANDBOX_RUNTIME: "${OPENHANDS_SANDBOX_RUNTIME:-local}"
+      # LLM is configured per-user via the UI Settings page (settings store).
+      # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       E2B_API_KEY: "${E2B_API_KEY:-}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - openhands_workspace:/opt/workspace_base
+      - openhands_data:/root/.openhands          # settings/secrets persistence
+      - openhands_workspace:/app/workspace        # conversation workspace
     ports:
       - "3000:3000"
     restart: on-failure
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:3000/health').status==200 else 1)"]
+      # agent-schema needs no auth/DB — a 200 here proves the v1 API is live.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:3000/api/v1/settings/agent-schema').status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   # The autonomous coding agent (OpenHands SDK + E2B sandbox).
   agent:
@@ -145,3 +141,4 @@ volumes:
   bluhands_grafanadata:
   bluhands_builds:      # agent workspace — persists generated code across restarts
   openhands_workspace:  # OpenHands conversation workspace
+  openhands_data:       # app-server settings/secrets store (~/.openhands)

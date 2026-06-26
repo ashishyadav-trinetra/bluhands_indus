@@ -1,0 +1,4 @@
+# LLM config is managed through the OpenHands UI Settings page.
+
+[core]
+workspace_base = "./workspace"

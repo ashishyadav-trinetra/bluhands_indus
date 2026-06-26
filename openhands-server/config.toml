@@ -1,0 +1,11 @@
+# Blu Hands Configuration
+# LLM config is managed through the UI Settings page.
+
+[core]
+workspace_base = "./workspace"
+
+[sandbox]
+# Reduce sandbox startup time
+# keep_runtime_alive = true    # Keep containers alive after session ends (reuse on next session)
+# pause_closed_runtimes = true # Pause instead of stop — resume is faster than cold start
+# close_delay = 900            # Wait 15 min before closing idle runtimes (default: 300)
