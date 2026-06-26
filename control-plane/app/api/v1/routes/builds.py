@@ -68,7 +68,7 @@ async def start_build(
     from app.db.models.enums import PlatformRole
 
     _AGENT_ROLES = {PlatformRole.ADMIN.value, PlatformRole.SELF.value, PlatformRole.TESTER.value}
-    if user.platform_role not in _AGENT_ROLES:
+    if user.platform_role not in _AGENT_ROLES and not user.is_platform_admin:
         raise AppError(
             "Agent access requires a Pro upgrade.",
             code="UPGRADE_REQUIRED",

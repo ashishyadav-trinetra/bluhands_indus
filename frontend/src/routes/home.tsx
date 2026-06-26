@@ -1,4 +1,5 @@
 import React from "react";
+import toast from "react-hot-toast";
 import { PrefetchPageLinks, useNavigate } from "react-router";
 import { useSettings } from "#/hooks/query/use-settings";
 import { useGitUser } from "#/hooks/query/use-git-user";
@@ -370,6 +371,7 @@ function HomeScreen() {
   const [showModelMenu, setShowModelMenu] = React.useState(false);
   const [clarify, setClarify] = React.useState<{ prompt: string; questions: AgentQuestion[] } | null>(null);
   const [checking, setChecking] = React.useState(false);
+  const [showUpgrade, setShowUpgrade] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const uiBusy = isPending || checking;
@@ -405,6 +407,18 @@ function HomeScreen() {
         {
           onSuccess: (build) =>
             navigate(`/forge/build/${forgeOrgId}/${forgeTenant.id}/${build.id}`),
+          onError: (err: unknown) => {
+            const e = err as {
+              response?: { status?: number; data?: { error?: { code?: string } } };
+            };
+            const status = e?.response?.status;
+            const code = e?.response?.data?.error?.code;
+            if (status === 402 || code === "UPGRADE_REQUIRED") {
+              setShowUpgrade(true); // friendly upgrade popup, not a raw error
+            } else {
+              toast.error("Couldn't start the build. Please try again.");
+            }
+          },
         },
       );
     } else {
@@ -829,6 +843,47 @@ function HomeScreen() {
             handleCreateWithPrompt(enriched, github);
           }}
         />
+      )}
+
+      {/* Upgrade popup — shown when a non-Pro user tries to build (402) */}
+      {showUpgrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowUpgrade(false)}
+          />
+          <div className="relative w-full max-w-[420px] bg-[#0d0f14] border border-[#2a2d37] rounded-2xl shadow-2xl overflow-hidden p-7 text-center">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#a855f7] flex items-center justify-center">
+              <svg width="22" height="22" fill="none" stroke="white" strokeWidth="2">
+                <path d="M11 2l2.5 5 5.5.8-4 3.9.9 5.5L11 20.6 6.1 23l.9-5.5-4-3.9 5.5-.8z" />
+              </svg>
+            </div>
+            <h2 className="text-white font-semibold text-lg mb-1">Upgrade to build</h2>
+            <p className="text-sm text-[#9099ac] mb-6">
+              Building apps with the AI agent is a Pro feature. Upgrade your plan to
+              start building, or ask an admin to enable access for your account.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUpgrade(false);
+                  navigate("/settings/billing");
+                }}
+                className="w-full py-2.5 rounded-xl bg-[#3b82f6] hover:bg-[#2563eb] text-white text-sm font-medium transition-colors"
+              >
+                Upgrade to Pro
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUpgrade(false)}
+                className="w-full py-2 text-[13px] text-[#666] hover:text-white transition-colors"
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

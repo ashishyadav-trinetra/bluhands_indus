@@ -9,10 +9,15 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 COPY . .
-# Vite reads VITE_* at build time; pass them as build args if you bake them in.
+# Vite reads VITE_* at BUILD time. They must be build ARGs AND exported to ENV so
+# `npm run build` (Vite) actually bakes them into the bundle. On a remote deploy,
+# VITE_API_BASE_URL MUST be the public URL the browser can reach (NOT localhost).
 ARG VITE_API_BASE_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
+    VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build
 
 # ---- runtime ----------------------------------------------------------------
