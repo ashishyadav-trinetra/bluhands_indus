@@ -15,9 +15,12 @@ import uuid
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, status
 from fastapi.responses import Response
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.v1.dependencies.auth import require_org_role
 from app.api.v1.dependencies.providers import get_app_settings
 from app.api.v1.dependencies.services import get_build_service
+from app.db.session import get_db_session
 from app.core.config import Settings
 from app.core.exceptions import AuthorizationError
 from app.db.models.enums import Role
@@ -57,6 +60,7 @@ async def start_build(
     user: User = Depends(require_org_role(Role.OWNER, Role.EDITOR)),
     service: BuildService = Depends(get_build_service),
     settings: Settings = Depends(get_app_settings),
+    session: AsyncSession = Depends(get_db_session),
 ) -> SuccessResponse[BuildRunResponse]:
     """Enqueue a new build job and return 202 Accepted with the build ID.
 
@@ -82,6 +86,10 @@ async def start_build(
         llm_model=settings.model_for_role(user.platform_role),
         started_by=user.id,
     )
+    # Load all columns in the async context so serializing the ORM object below
+    # doesn't trigger a lazy DB load during (sync) pydantic validation, which
+    # raises MissingGreenlet. (updated_at is expired by its onupdate timestamp.)
+    await session.refresh(build_run)
     return SuccessResponse(data=BuildRunResponse.model_validate(build_run))
 
 
