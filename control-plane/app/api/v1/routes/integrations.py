@@ -26,6 +26,7 @@ from app.api.v1.dependencies.providers import get_app_settings
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.db.models.user import User
+from app.schemas.common import SuccessResponse
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -120,6 +121,85 @@ async def list_connections(
         raise AppError("Nango is unreachable", code="NANGO_UNAVAILABLE", http_status=502) from exc
 
     return resp.json()
+
+
+class GithubStatus(BaseModel):
+    connected: bool
+
+
+class GithubRepo(BaseModel):
+    name: str
+    full_name: str
+    private: bool
+    clone_url: str
+
+
+@router.get("/github", response_model=SuccessResponse[GithubStatus])
+async def github_status(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_app_settings),
+) -> SuccessResponse[GithubStatus]:
+    """Return whether the authenticated user has a GitHub connection via Nango."""
+    if not settings.nango_secret_key:
+        return SuccessResponse(data=GithubStatus(connected=False))
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.nango_base_url}/connections",
+                headers=_nango_headers(settings),
+                params={"tags[end_user_id]": str(user.id), "integration_id": "github"},
+            )
+            resp.raise_for_status()
+        connections = resp.json().get("connections", [])
+        return SuccessResponse(data=GithubStatus(connected=len(connections) > 0))
+    except Exception:
+        return SuccessResponse(data=GithubStatus(connected=False))
+
+
+@router.get("/github/repos", response_model=SuccessResponse[list[GithubRepo]])
+async def github_repos(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_app_settings),
+) -> SuccessResponse[list[GithubRepo]]:
+    """Return the user's accessible GitHub repositories via Nango proxy."""
+    if not settings.nango_secret_key:
+        return SuccessResponse(data=[])
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            conn_resp = await client.get(
+                f"{settings.nango_base_url}/connections",
+                headers=_nango_headers(settings),
+                params={"tags[end_user_id]": str(user.id), "integration_id": "github"},
+            )
+            conn_resp.raise_for_status()
+            connections = conn_resp.json().get("connections", [])
+            if not connections:
+                return SuccessResponse(data=[])
+
+            connection_id = connections[0]["id"]
+            proxy_resp = await client.get(
+                f"{settings.nango_base_url}/proxy/github/user/repos",
+                headers={
+                    **_nango_headers(settings),
+                    "Connection-Id": connection_id,
+                    "Provider-Config-Key": "github",
+                },
+                params={"per_page": 100, "sort": "pushed"},
+            )
+            proxy_resp.raise_for_status()
+            repos = [
+                GithubRepo(
+                    name=r["name"],
+                    full_name=r["full_name"],
+                    private=r["private"],
+                    clone_url=r["clone_url"],
+                )
+                for r in proxy_resp.json()
+                if isinstance(r, dict)
+            ]
+            return SuccessResponse(data=repos)
+    except Exception:
+        return SuccessResponse(data=[])
 
 
 @router.post("/webhook")

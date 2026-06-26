@@ -11,6 +11,9 @@ export function useShouldHideOrgSelector() {
     return true;
   }
 
-  // In SaaS mode, hide if user only has one personal org
-  return organizations?.length === 1 && organizations[0]?.is_personal === true;
+  // Hide the selector whenever there's nothing meaningful to choose: BluHands
+  // doesn't use OpenHands' org concept, so the list is empty or a single
+  // (personal) org. A picker needs >= 2 options to be useful — otherwise it just
+  // shows the confusing "Please select an organization / No options" wall.
+  return !organizations || organizations.length <= 1;
 }

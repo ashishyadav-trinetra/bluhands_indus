@@ -49,10 +49,14 @@ WORKDIR /app
 COPY --chown=appuser:appuser app ./app
 COPY --chown=appuser:appuser migrations ./migrations
 COPY --chown=appuser:appuser alembic.ini ./alembic.ini
+COPY --chown=appuser:appuser scripts/entrypoint.sh ./entrypoint.sh
 
 USER appuser
 
+RUN chmod +x ./entrypoint.sh
+
 EXPOSE 8000
 
+ENTRYPOINT ["./entrypoint.sh"]
 # Default command runs the API; compose overrides this for the worker.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
