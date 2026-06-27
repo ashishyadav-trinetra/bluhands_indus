@@ -31,6 +31,11 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 RUN touch README.md && uv sync --frozen --no-dev --no-install-project
 
+# The default agent preset includes a browser tool that requires Chromium at
+# conversation startup (otherwise creating a conversation 500s). Install Chromium
+# + its OS dependencies into the venv's Playwright.
+RUN /app/.venv/bin/python -m playwright install --with-deps chromium
+
 # App source + config + microagents/skills.
 COPY openhands/ ./openhands/
 COPY config.toml ./
