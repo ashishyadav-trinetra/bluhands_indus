@@ -76,6 +76,16 @@ curl -sS -X POST http://localhost:3000/api/v1/settings -H "Content-Type: applica
 
 ---
 
+## 4b. GitHub = OpenHands-native (decided 2026-06-27)
+
+GitHub is now handled entirely by the OpenHands app-server, not Nango/forge:
+
+- **Connect:** Settings → Integrations (`routes/git-settings.tsx`) → paste a GitHub **PAT** (repo scope) → `POST /api/v1/secrets/provider-tokens` → stored in the app-server secrets store. (OSS mode = PAT; a GitHub OAuth app is an optional later polish.)
+- **Use:** the agent clones/pushes/opens PRs **in the conversation sandbox** using that token; `git_router` provides repo search/branches/PRs. Multi-provider (GitHub/GitLab/Bitbucket/Azure/Forgejo) all come for free.
+- **Removed:** the duplicate Nango/forge GitHub path in the UI — the `home.tsx` clarify-overlay GitHub section (repo dropdown + push/pull toggles + `useGithubStatus/useGithubRepos`) is gone; the overlay now just links to Settings → Integrations. (Needs frontend rebuild.)
+- **Dead but not deleted (intentional):** the forge backend GitHub code (`github_service.py`, the `/github` route, `build_runs.github_*` columns, migration 0006, `build_executor._github_context`) and the `hooks/query/use-github.ts` frontend hook are now unused. Left in place because deleting DB columns/migrations is risky for no benefit. A future cleanup can remove them; nothing calls them.
+- **Follow-up (optional):** wire the native repo dropdown into the build start (`createConversation({ repository })` → conversation `selected_repository`) so users can pick an existing repo to build *on* from the UI. Today they connect once, then ask the agent in-conversation.
+
 ## 5. Known issues / follow-ups (priority order)
 
 1. **Build failure visibility (HIGH).** When a build fails — e.g. OpenRouter **low balance → LLM 402** — nothing clear surfaces in the UI. Need: agent captures the failure reason → control-plane stores it on the build status → frontend shows a clear error toast/banner (not a silent stop). Today the only way to see why is `docker compose logs -f agent` / `worker`. _Where to work: `agent/agent/runner.py` error propagation → `control-plane` build status model/route → frontend build status handling._

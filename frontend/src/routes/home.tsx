@@ -12,13 +12,10 @@ import { useForgeMe } from "#/hooks/query/use-forge-me";
 import { useForgeTenants } from "#/hooks/query/use-forge-tenant";
 // useStartBuild removed — all builds now go through OpenHands conversations
 import { useDeleteConversation } from "#/hooks/mutation/use-delete-conversation";
-import { useGithubStatus, useGithubRepos } from "#/hooks/query/use-github";
-
-interface GithubSelection {
-  repo_url: string;
-  push: boolean;
-  pull: boolean;
-}
+// GitHub is handled natively by the OpenHands app-server: connect a token in
+// Settings → Integrations (POST /api/v1/secrets/provider-tokens), and the agent
+// clones/pushes/opens PRs in the conversation. The old Nango/forge GitHub path
+// was removed.
 
 // ─── Smart LLM-powered clarification overlay ──────────────────────────────────
 interface AgentQuestion {
@@ -33,7 +30,7 @@ interface AgentQuestion {
 interface ClarifyOverlayProps {
   prompt: string;
   initialQuestions: AgentQuestion[];
-  onConfirm: (enrichedPrompt: string, github?: GithubSelection) => void;
+  onConfirm: (enrichedPrompt: string) => void;
   onBack: () => void;
   isPending: boolean;
 }
@@ -45,17 +42,6 @@ function ClarifyOverlay({ prompt, initialQuestions, onConfirm, onBack, isPending
   const [answers, setAnswers] = React.useState<Record<string, string | string[]>>({});
   const [activeQ, setActiveQ] = React.useState(0);
   const [enhancing, setEnhancing] = React.useState(false);
-
-  // ── GitHub (optional) ──────────────────────────────────────────────────────
-  const { data: ghStatus } = useGithubStatus();
-  const ghConnected = !!ghStatus?.connected;
-  const { data: ghRepos } = useGithubRepos(ghConnected);
-  const [repoUrl, setRepoUrl] = React.useState("");
-  const [ghPush, setGhPush] = React.useState(false);
-  const [ghPull, setGhPull] = React.useState(false);
-  const githubSelection: GithubSelection | undefined = repoUrl
-    ? { repo_url: repoUrl, push: ghPush, pull: ghPull }
-    : undefined;
 
   const pickSingle = (qId: string, option: string) => {
     setAnswers((prev) => ({ ...prev, [qId]: option }));
@@ -90,10 +76,10 @@ function ClarifyOverlay({ prompt, initialQuestions, onConfirm, onBack, isPending
         prompt,
         clarifications: formattedAnswers,
       });
-      onConfirm(r.data?.enhanced_prompt || prompt, githubSelection);
+      onConfirm(r.data?.enhanced_prompt || prompt);
     } catch {
       // Fallback: use raw prompt if enhance fails
-      onConfirm(prompt, githubSelection);
+      onConfirm(prompt);
     } finally {
       setEnhancing(false);
     }
@@ -191,54 +177,19 @@ function ClarifyOverlay({ prompt, initialQuestions, onConfirm, onBack, isPending
             })}
         </div>
 
-        {/* GitHub (optional) */}
+        {/* GitHub — native OpenHands integration. Connect a token once in
+            Settings → Integrations; then just ask the agent to clone/push/PR
+            during the build (it uses your connected token in the sandbox). */}
         <div className="px-6 py-4 border-t border-[#1e2028]">
           <p className="text-[11px] text-[#3b82f6] font-medium uppercase tracking-wider mb-2">
             GitHub (optional)
           </p>
-          {ghConnected ? (
-            <div className="space-y-2">
-              <select
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                disabled={busy}
-                className="w-full bg-[#111318] border border-[#2a2d37] rounded-lg px-3 py-2 text-[12px] text-white outline-none focus:border-[#3b82f6]/50"
-              >
-                <option value="">Don&apos;t use a repo</option>
-                {ghRepos?.map((r) => (
-                  <option key={r.clone_url} value={r.clone_url}>
-                    {r.full_name}
-                  </option>
-                ))}
-              </select>
-              {repoUrl && (
-                <div className="flex flex-col gap-1.5 pl-0.5">
-                  <label className="flex items-center gap-2 text-[12px] text-[#9099ac] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={ghPull}
-                      onChange={(e) => setGhPull(e.target.checked)}
-                      disabled={busy}
-                    />
-                    Pull latest from this repo before building
-                  </label>
-                  <label className="flex items-center gap-2 text-[12px] text-[#9099ac] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={ghPush}
-                      onChange={(e) => setGhPush(e.target.checked)}
-                      disabled={busy}
-                    />
-                    Push the generated code to this repo after building
-                  </label>
-                </div>
-              )}
-            </div>
-          ) : (
-            <a href="/connectors" className="text-[12px] text-[#3b82f6] hover:underline">
-              Connect GitHub to push/pull code →
-            </a>
-          )}
+          <a href="/settings/integrations" className="text-[12px] text-[#3b82f6] hover:underline">
+            Connect GitHub in Settings → Integrations →
+          </a>
+          <p className="text-[11px] text-[#3b4250] mt-1">
+            Once connected, ask the agent to clone a repo, push your build, or open a PR.
+          </p>
         </div>
 
         {/* Footer */}
@@ -400,7 +351,7 @@ function HomeScreen() {
   // Always opens an OpenHands conversation so the user gets the live agent view
   // (VSCode, terminal, App/Changes/Code tabs). The enriched prompt makes the
   // agent work autonomously — no back-and-forth needed.
-  const handleCreateWithPrompt = (prompt: string, _github?: GithubSelection) => {
+  const handleCreateWithPrompt = (prompt: string) => {
     if (isPending) return;
     createConversation(
       { query: prompt },
@@ -819,9 +770,9 @@ function HomeScreen() {
           initialQuestions={clarify.questions}
           isPending={isPending}
           onBack={() => setClarify(null)}
-          onConfirm={(enriched, github) => {
+          onConfirm={(enriched) => {
             setClarify(null);
-            handleCreateWithPrompt(enriched, github);
+            handleCreateWithPrompt(enriched);
           }}
         />
       )}
