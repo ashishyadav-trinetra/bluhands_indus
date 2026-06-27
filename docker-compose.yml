@@ -35,6 +35,10 @@ services:
       SERVE_FRONTEND: "false"           # the `frontend` service serves the UI
       RUNTIME: "process"                # in-container process sandbox for convos
       CORS_ALLOWED_ORIGINS: "*"
+      # Each conversation's agent-server runs on a dynamic in-container port.
+      # Hand the BROWSER a proxyable URL (https://host/runtime/{port}/...) instead
+      # of a raw localhost:{port}; nginx reverse-proxies /runtime/{port}/ to it.
+      SANDBOX_CONTAINER_URL_PATTERN: "https://app.bluehands.ai/runtime/{port}"
       # LLM is configured per-user via the UI Settings page (settings store).
       # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
