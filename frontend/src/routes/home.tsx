@@ -346,7 +346,8 @@ function HomeScreen() {
   const { data: settings } = useSettings();
   const user = useGitUser();
   const { data: conversationData } = usePaginatedConversations();
-  const { isPending: isConversationPending } = useCreateConversation();
+  const { mutate: createConversation, isPending: isConversationPending } =
+    useCreateConversation();
 
   // ── Forge (BluHands control-plane) ────────────────────────────────────────
   const { data: forgeMe } = useForgeMe();
