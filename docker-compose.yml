@@ -55,6 +55,10 @@ services:
       - "host.docker.internal:127.0.0.1"
     ports:
       - "3000:3000"
+      # Per-conversation agent-servers listen on 18000+. Publish a range so the
+      # HOST nginx can reverse-proxy /runtime/{port}/ to them. (They must bind
+      # 0.0.0.0 inside the container for this to work — verify; see notes.)
+      - "18000-18030:18000-18030"
     restart: on-failure
     healthcheck:
       # agent-schema needs no auth/DB — a 200 here proves the v1 API is live.
