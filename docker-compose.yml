@@ -42,6 +42,13 @@ services:
     volumes:
       - openhands_data:/root/.openhands          # settings/secrets persistence
       - openhands_workspace:/app/workspace        # conversation workspace
+    # The app-server runs each conversation's agent-server as an in-container
+    # subprocess (RUNTIME=process). OpenHands rewrites localhost ->
+    # host.docker.internal for cross-container Docker setups; in our single-
+    # container model that breaks the agent-server health check. Map it back to
+    # the container itself so the rewrite resolves to the local subprocess.
+    extra_hosts:
+      - "host.docker.internal:127.0.0.1"
     ports:
       - "3000:3000"
     restart: on-failure

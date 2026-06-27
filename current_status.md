@@ -6,6 +6,8 @@ Deployment: EC2 `ip-172-31-8-128`, repo at `~/var/www/bluhands_indus` (a clone o
 
 ---
 
+> **2026-06-27 update:** Root-caused why builds did nothing. Three stacked bugs, now fixed in the repo (frontend rebuild pending on the server): (a) `/api/` config routing, (b) `/sockets/` WS routing, (c) `createConversation` was undefined so "Start building" never called the build API. After the frontend rebuild, the open question is whether the OSS app-server's `RUNTIME=process` agent actually executes the conversation end-to-end (see Known Issues #2).
+
 ## 1. What works right now (2026-06-26)
 
 - **Auth** — Supabase login → forge verifies the JWT via **JWKS** (ES256). `GET /forge/api/v1/auth/me` returns 200 once the token is attached. (The first one or two 401s on page load are just pre-token requests.)
@@ -69,6 +71,8 @@ curl -sS -X POST http://localhost:3000/api/v1/settings -H "Content-Type: applica
 5. **Host nginx routing fixed.** Root cause of "changes do nothing": the browser hits the **host** nginx, which only had `/forge/` and `/`. Added `/api/ → :3000`. (Earlier edits were to the wrong, docker, nginx.) File lives in repo: `deploy/nginx-host.conf`; install with `sudo cp deploy/nginx-host.conf /etc/nginx/sites-available/bluhands && sudo nginx -t && sudo nginx -s reload`.
 6. **`web-client/config` fix.** It was falling to the SPA → `app_mode` undefined → the whole `useIsAuthed`→schema chain stalled. Routing all `/api/` to the app-server made it return `{"app_mode":"oss",...}`, unblocking the schema query.
 7. **Forced LLM popup fixed.** It fires only when `app_mode==="oss" && GET /settings==404 && !hide_llm_settings` (`sidebar.tsx`). Seeded the default LLM so `/settings` is 200.
+8. **`/sockets/` WS route added** to the host nginx (`deploy/nginx-host.conf`) → `:3000`. The conversation event stream (agent output + errors) lives at `wss://host/sockets/events/{id}`; without this it never connects and the build looks silent.
+9. **"Start building" never fired the build API — fixed.** `frontend/src/routes/home.tsx` destructured only `isPending` from `useCreateConversation()` and forgot `mutate: createConversation`. So clicking Start building called an **undefined** `createConversation(...)` → `ReferenceError` thrown *before* any request → `POST /api/v1/app-conversations` was never sent, overlay closed, silent bounce back to home. Fixed by destructuring `mutate: createConversation`. **Needs a frontend rebuild** (`docker compose build --no-cache frontend && docker compose up -d frontend` + Cloudflare purge).
 
 ---
 
