@@ -31,6 +31,11 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 RUN touch README.md && uv sync --frozen --no-dev --no-install-project
 
+# The Supabase-backed per-user settings/secrets stores import the `supabase`
+# client, which isn't in the base lockfile. Without it, every settings SAVE
+# raises (500) while reads degrade silently. Install it into the venv.
+RUN uv pip install --python /app/.venv/bin/python supabase
+
 # The default agent preset includes a browser tool that requires Chromium at
 # conversation startup (otherwise creating a conversation 500s). Install Chromium
 # + its OS dependencies into the venv's Playwright.
