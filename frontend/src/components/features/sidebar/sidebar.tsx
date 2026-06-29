@@ -111,13 +111,12 @@ export function Sidebar() {
       displayErrorToast(
         "Something went wrong while fetching settings. Please reload the page.",
       );
-    } else if (
-      config?.app_mode === "oss" &&
-      settingsError?.status === 404 &&
-      !config?.feature_flags?.hide_llm_settings
-    ) {
-      setSettingsModalIsOpen(true);
     }
+    // NOTE: we intentionally do NOT force-open the "AI Provider Configuration"
+    // modal on a 404. On BluHands the platform provides the model (per-user
+    // default), so a user with no settings yet must not be hard-blocked by a
+    // non-bypassable popup. Users who want to bring their own key open it
+    // themselves via Settings -> LLM.
   }, [
     pathname,
     isFetchingSettings,
