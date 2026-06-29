@@ -61,6 +61,16 @@ services:
       BLUHANDS_PLATFORM_LLM_MODEL: "${BLUHANDS_PLATFORM_LLM_MODEL:-openrouter/anthropic/claude-sonnet-4.5}"
       BLUHANDS_PLATFORM_LLM_API_KEY: "${OPENROUTER_API_KEY:-}"
       BLUHANDS_PLATFORM_LLM_BASE_URL: "https://openrouter.ai/api/v1"
+      # ── Self-hosted model for org users (no key, no upgrade) ─────────────────
+      # Users whose email domain is in BLUHANDS_SELFHOSTED_DOMAINS get pinned to
+      # your self-hosted endpoint (e.g. Qwen on the DGX box). Set these in .env:
+      #   BLUHANDS_SELFHOSTED_DOMAINS=trinetralabs.ai
+      #   BLUHANDS_SELFHOSTED_BASE_URL=http://<dgx-ip>:<port>/v1
+      #   BLUHANDS_SELFHOSTED_MODEL=openai/<served-model-name>   (LiteLLM slug)
+      BLUHANDS_SELFHOSTED_DOMAINS: "${BLUHANDS_SELFHOSTED_DOMAINS:-}"
+      BLUHANDS_SELFHOSTED_BASE_URL: "${BLUHANDS_SELFHOSTED_BASE_URL:-}"
+      BLUHANDS_SELFHOSTED_MODEL: "${BLUHANDS_SELFHOSTED_MODEL:-}"
+      BLUHANDS_SELFHOSTED_API_KEY: "${BLUHANDS_SELFHOSTED_API_KEY:-sk-local}"
       # LLM is configured per-user via the UI Settings page (settings store).
       # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"

@@ -125,6 +125,36 @@ def _platform_llm_diff() -> dict | None:
     }
 
 
+def _selfhosted_llm_diff(email: str | None) -> dict | None:
+    """Settings diff for the org's SELF-HOSTED model (e.g. Qwen on the DGX box).
+
+    Applied to users whose email domain is in BLUHANDS_SELFHOSTED_DOMAINS — they
+    build on the self-hosted endpoint with NO external key and NO upgrade.
+    BLUHANDS_SELFHOSTED_MODEL is a full LiteLLM slug (e.g. 'openai/Qwen3-32B' or
+    'hosted_vllm/qwen'); BLUHANDS_SELFHOSTED_BASE_URL is the OpenAI-compatible
+    endpoint (e.g. http://192.168.1.50:8000/v1). The api_key is a dummy because
+    LiteLLM requires a non-empty value even when the server ignores it.
+    """
+    domains = os.getenv('BLUHANDS_SELFHOSTED_DOMAINS', '')
+    base_url = os.getenv('BLUHANDS_SELFHOSTED_BASE_URL')
+    model = os.getenv('BLUHANDS_SELFHOSTED_MODEL')
+    if not (domains and base_url and model):
+        return None
+    domain = (email or '').strip().lower().rsplit('@', 1)[-1]
+    allowed = {d.strip().lower() for d in domains.split(',') if d.strip()}
+    if not domain or domain not in allowed:
+        return None
+    return {
+        'agent_settings_diff': {
+            'llm': {
+                'model': model,
+                'base_url': base_url,
+                'api_key': os.getenv('BLUHANDS_SELFHOSTED_API_KEY', 'sk-local'),
+            }
+        }
+    }
+
+
 @dataclass
 class SupabaseUserAuth(UserAuth):
     """Supabase-based user authentication.
@@ -173,11 +203,20 @@ class SupabaseUserAuth(UserAuth):
         # whenever they have NO LLM key yet — not just when settings are absent
         # (a settings row exists after the analytics-consent save, but with no
         # LLM). Normal users get nothing → they can never use this key.
-        if _is_platform_admin(self._user_email):
-            has_key = settings is not None and bool(
-                getattr(settings, 'llm_api_key_is_set', False)
+        has_key = settings is not None and bool(
+            getattr(settings, 'llm_api_key_is_set', False)
+        )
+        if not has_key:
+            # Precedence: platform admins build on the OpenRouter paid model;
+            # everyone else on an allowed org domain gets the self-hosted model.
+            # Users who are neither get nothing (must upgrade).
+            diff = (
+                _platform_llm_diff()
+                if _is_platform_admin(self._user_email)
+                else None
             )
-            diff = None if has_key else _platform_llm_diff()
+            if diff is None:
+                diff = _selfhosted_llm_diff(self._user_email)
             if diff is not None:
                 if settings is None:
                     settings = Settings()
