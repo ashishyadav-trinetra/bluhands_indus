@@ -367,8 +367,8 @@ class OpenHandsRunner:
         except Exception:  # noqa: BLE001
             pass
 
-        if not self._settings.openrouter_api_key():
-            return (False, "OPENROUTER_API_KEY not set")
+        if not (self._settings.openrouter_api_key() or self._settings.custom_model_enabled):
+            return (False, "no LLM credentials: set OPENROUTER_API_KEY or AGENT_CUSTOM_MODEL_ENABLED=true")
 
         try:
             from agent.llm import build_llm

@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # a single agent step and keeps credit spend predictable.
     llm_max_output_tokens: int = 16000
 
+    # --- Custom LLM (self-hosted OpenAI-compatible, e.g. api.bluehands.ai) ---
+    # When enabled, models with the ``custom/`` prefix (e.g. ``custom/qwen3.6-35b-a3b``)
+    # are routed to the custom endpoint instead of OpenRouter.
+    custom_model_enabled: bool = False
+    # Base URL of the custom OpenAI-compatible API (vLLM, etc.).
+    custom_model_base_url: str = "https://api.bluehands.ai/v1"
+    # API key for the custom endpoint (required by the openai SDK; the server may
+    # ignore it).
+    custom_model_api_key: str = "anything"
+
     # --- Server ---
     host: str = "0.0.0.0"
     port: int = 8100
@@ -92,8 +102,8 @@ class Settings(BaseSettings):
         return os.getenv("E2B_API_KEY")
 
     def use_real_runner(self) -> bool:
-        """Real OpenHands runner only when explicitly enabled AND a key exists."""
-        return (not self.dry_run) and bool(self.openrouter_api_key())
+        """Real OpenHands runner only when explicitly enabled AND credentials exist."""
+        return (not self.dry_run) and bool(self.openrouter_api_key() or self.custom_model_enabled)
 
 
 @lru_cache
