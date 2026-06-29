@@ -33,9 +33,10 @@ export function ModalBackdrop({
     >
       <div
         onClick={handleClick}
-        className="fixed inset-0 bg-black opacity-60"
+        className="fixed inset-0 bg-black animate-backdrop-fade-in"
+        style={{ opacity: 0.6 }}
       />
-      <div className="relative">{children}</div>
+      <div className="relative animate-modal-scale-in">{children}</div>
     </div>
   );
 }

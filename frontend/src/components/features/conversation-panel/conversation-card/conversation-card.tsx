@@ -2,6 +2,7 @@ import React from "react";
 import { usePostHog } from "posthog-js/react";
 import { cn } from "#/utils/utils";
 import { transformVSCodeUrl } from "#/utils/vscode-url-helper";
+import DeleteIcon from "#/icons/u-delete.svg?react";
 import ConversationService from "#/api/conversation-service/conversation-service.api";
 import { V1SandboxStatus } from "#/api/sandbox-service/sandbox-service.types";
 import { RepositorySelection } from "#/api/open-hands.types";
@@ -124,7 +125,7 @@ export function ConversationCard({
       data-context-menu-open={contextMenuOpen.toString()}
       onClick={onClick}
       className={cn(
-        "relative h-auto w-full p-3.5 border-b border-neutral-600 cursor-pointer",
+        "group/card relative h-auto w-full p-3.5 border-b border-neutral-600 cursor-pointer",
         "data-[context-menu-open=false]:hover:bg-[#454545]",
       )}
     >
@@ -139,20 +140,39 @@ export function ConversationCard({
           <SandboxStatusBadges sandboxStatus={sandboxStatus} />
         </div>
 
-        {hasContextMenu && (
-          <ConversationCardActions
-            contextMenuOpen={contextMenuOpen}
-            onContextMenuToggle={onContextMenuToggle || (() => {})}
-            onDelete={onDelete && handleDelete}
-            onStop={onStop && handleStop}
-            onEdit={onChangeTitle && handleEdit}
-            onDownloadViaVSCode={handleDownloadViaVSCode}
-            onDownloadConversation={handleDownloadConversation}
-            sandboxStatus={sandboxStatus}
-            conversationId={conversationId}
-            showOptions={showOptions}
-          />
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Direct delete button — slides in on hover */}
+          {onDelete && (
+            <button
+              data-testid="delete-button"
+              type="button"
+              onClick={handleDelete}
+              aria-label="Delete conversation"
+              className={cn(
+                "opacity-0 translate-x-1 group-hover/card:opacity-100 group-hover/card:translate-x-0",
+                "transition-all duration-200 ease-out",
+                "p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400",
+              )}
+            >
+              <DeleteIcon width={14} height={14} />
+            </button>
+          )}
+
+          {hasContextMenu && (
+            <ConversationCardActions
+              contextMenuOpen={contextMenuOpen}
+              onContextMenuToggle={onContextMenuToggle || (() => {})}
+              onDelete={onDelete && handleDelete}
+              onStop={onStop && handleStop}
+              onEdit={onChangeTitle && handleEdit}
+              onDownloadViaVSCode={handleDownloadViaVSCode}
+              onDownloadConversation={handleDownloadConversation}
+              sandboxStatus={sandboxStatus}
+              conversationId={conversationId}
+              showOptions={showOptions}
+            />
+          )}
+        </div>
       </div>
 
       <ConversationCardFooter
