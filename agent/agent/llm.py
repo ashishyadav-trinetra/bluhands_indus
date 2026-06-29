@@ -85,22 +85,18 @@ def _build_custom_llm(settings: Settings, model: str):
         ) from exc
 
     # The OpenAI Python SDK sends User-Agent: OpenAI/Python …  The bluehands
-    # Cloudflare WAF blocks this header.  We patch at TWO levels for reliability
-    # across SDK versions: the user_agent property (affects _default_headers)
-    # and _build_headers (forces after merging).
-    import openai._base_client as _oai_base  # type: ignore  # noqa: PLC0415
+    # Cloudflare WAF blocks this header.  Override at the httpx transport layer
+    # so every outgoing request from this process uses a safe UA.
+    import httpx as _oh_httpx  # type: ignore  # noqa: PLC0415
 
-    _oai_base.BaseClient.user_agent = property(lambda self: "bluehands-agent/1.0")
-
-    _orig_oh_build = _oai_base.BaseClient._build_headers
+    _oh_orig_send = _oh_httpx.Client.send
 
 
-    def _oh_patched_build(self, *args: object, **kw: object) -> object:  # type: ignore[no-untyped-def]
-        headers = _orig_oh_build(self, *args, **kw)
-        headers["User-Agent"] = "bluehands-agent/1.0"
-        return headers
+    def _oh_safe_send(self: _oh_httpx.Client, request: _oh_httpx.Request, **kw: object) -> _oh_httpx.Response:  # type: ignore[misc]
+        request.headers["User-Agent"] = "bluehands-agent/1.0"
+        return _oh_orig_send(self, request, **kw)
 
-    _oai_base.BaseClient._build_headers = _oh_patched_build
+    _oh_httpx.Client.send = _oh_safe_send
 
     # Strip whichever prefix was used ("custom/foo" -> "foo", "openai/foo" -> "foo")
     for prefix in (_CUSTOM_PREFIX, "openai/"):
