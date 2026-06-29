@@ -25,26 +25,73 @@ from openhands.server import shared
 _logger = logging.getLogger(__name__)
 
 
+_jwks_client: jwt.PyJWKClient | None = None
+
+
+def _get_jwks_client(jwks_url: str) -> jwt.PyJWKClient:
+    """Cache one PyJWKClient so we don't refetch the JWKS on every request."""
+    global _jwks_client
+    if _jwks_client is None:
+        _jwks_client = jwt.PyJWKClient(jwks_url, cache_keys=True)
+    return _jwks_client
+
+
 def _decode_supabase_token(token: str) -> dict | None:
-    """Decode and verify a Supabase JWT token."""
-    jwt_secret = os.getenv('SUPABASE_JWT_SECRET')
-    if not jwt_secret:
-        _logger.warning('SUPABASE_JWT_SECRET not set, cannot verify tokens')
-        return None
+    """Decode and verify a Supabase JWT.
+
+    Supports BOTH schemes Supabase uses, picked from the token's own ``alg``:
+    - **HS256** with the project's shared secret (``SUPABASE_JWT_SECRET``), and
+    - **asymmetric ES256/RS256** verified via the project's JWKS endpoint
+      (``SUPABASE_JWKS_URL``, or derived from ``SUPABASE_URL``).
+
+    Newer Supabase projects sign **ES256**; the original HS256-only code silently
+    failed on those and collapsed every user to 'default' (the multi-tenancy bug).
+    """
     try:
-        payload = jwt.decode(
+        alg = jwt.get_unverified_header(token).get('alg', '')
+    except Exception:  # noqa: BLE001 - malformed token
+        return None
+
+    try:
+        if alg == 'HS256':
+            secret = os.getenv('SUPABASE_JWT_SECRET')
+            if not secret:
+                _logger.warning('SUPABASE_JWT_SECRET not set; cannot verify HS256 token')
+                return None
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=['HS256'],
+                audience='authenticated',
+                options={'verify_exp': True},
+            )
+
+        # Asymmetric (ES256 / RS256) → verify against the project's JWKS.
+        jwks_url = os.getenv('SUPABASE_JWKS_URL')
+        if not jwks_url:
+            base = os.getenv('SUPABASE_URL', '').rstrip('/')
+            jwks_url = f'{base}/auth/v1/.well-known/jwks.json' if base else None
+        if not jwks_url:
+            _logger.warning(
+                'No SUPABASE_JWKS_URL/SUPABASE_URL set; cannot verify %s token', alg
+            )
+            return None
+        signing_key = _get_jwks_client(jwks_url).get_signing_key_from_jwt(token)
+        return jwt.decode(
             token,
-            jwt_secret,
-            algorithms=['HS256'],
+            signing_key.key,
+            algorithms=['ES256', 'RS256'],
             audience='authenticated',
             options={'verify_exp': True},
         )
-        return payload
     except jwt.ExpiredSignatureError:
         _logger.debug('Supabase token expired')
         return None
     except jwt.InvalidTokenError as e:
         _logger.debug(f'Invalid Supabase token: {e}')
+        return None
+    except Exception as e:  # noqa: BLE001 - JWKS fetch / key resolution errors
+        _logger.debug(f'Supabase token verification error: {e}')
         return None
 
 

@@ -39,6 +39,19 @@ services:
       # Hand the BROWSER a proxyable URL (https://host/runtime/{port}/...) instead
       # of a raw localhost:{port}; nginx reverse-proxies /runtime/{port}/ to it.
       SANDBOX_CONTAINER_URL_PATTERN: "https://app.bluehands.ai/runtime/{port}"
+      # ── Multi-tenant identity (per-user isolation) ───────────────────────────
+      # Setting SUPABASE_URL is the MASTER SWITCH: server_config.py then selects
+      # SupabaseUserAuth (real per-user id from the JWT) + per-user Supabase
+      # settings/secrets stores. Without it the app-server is SINGLE-USER and
+      # every login shares one account. Requires the user_settings + user_secrets
+      # tables in Supabase (see deploy/MULTI-TENANCY.md). Token verification now
+      # supports ES256 via JWKS (derived from SUPABASE_URL if JWKS_URL unset).
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_ANON_KEY: "${VITE_SUPABASE_ANON_KEY:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      SUPABASE_JWKS_URL: "${SUPABASE_JWKS_URL:-}"
+      SUPABASE_JWT_SECRET: "${SUPABASE_JWT_SECRET:-}"
+      WEB_HOST: "${WEB_HOST:-app.bluehands.ai}"
       # LLM is configured per-user via the UI Settings page (settings store).
       # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"

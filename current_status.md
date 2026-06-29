@@ -146,6 +146,26 @@ curl -sS -X POST http://localhost:3000/api/v1/settings -H "Content-Type: applica
   -d '{"conversation_settings_diff":{"confirmation_mode":false}}'
 ```
 
+## 4d. Multi-tenancy — per-user isolation (2026-06-27, CRITICAL)
+
+**Was broken:** the app-server ran `DefaultUserAuth` (`get_user_id()` always
+`None`), so every Supabase login collapsed to one global user — shared chats,
+settings, model, and GitHub identity (`ashish-yadav-911`). forge knew the real
+users (admin panel worked); the app-server did not.
+
+**Fix (keystone done in repo):** `supabase_user_auth.py` now verifies **ES256 via
+JWKS** in addition to HS256 (your tokens are ES256 — the original HS256-only code
+silently fell back to a single `default` user). Setting `SUPABASE_URL` on the
+`openhands` service (now wired in compose) is the master switch — `server_config.py`
+then selects `SupabaseUserAuth` + per-user Supabase settings/secrets stores, and
+conversations scope by `created_by_user_id`.
+
+**Still required on the server (can't be done from the repo):** set
+`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, create the `user_settings` /
+`user_secrets` tables in Supabase, deploy, and verify with two accounts. Full
+steps in **`deploy/MULTI-TENANCY.md`**. **Do not onboard real users until this is
+verified** — until then everyone shares one account.
+
 ## 5. Known issues / follow-ups (priority order)
 
 1. **Build failure visibility (HIGH).** When a build fails — e.g. OpenRouter **low balance → LLM 402** — nothing clear surfaces in the UI. Need: agent captures the failure reason → control-plane stores it on the build status → frontend shows a clear error toast/banner (not a silent stop). Today the only way to see why is `docker compose logs -f agent` / `worker`. _Where to work: `agent/agent/runner.py` error propagation → `control-plane` build status model/route → frontend build status handling._
