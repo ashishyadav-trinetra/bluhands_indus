@@ -85,11 +85,22 @@ def _build_custom_llm(settings: Settings, model: str):
         ) from exc
 
     # The OpenAI Python SDK sends User-Agent: OpenAI/Python …  The bluehands
-    # Cloudflare WAF blocks this header.  Replace the user_agent property on
-    # the base client class so every OpenAI/LiteLLM client uses a safe UA.
+    # Cloudflare WAF blocks this header.  We patch at TWO levels for reliability
+    # across SDK versions: the user_agent property (affects _default_headers)
+    # and _build_headers (forces after merging).
     import openai._base_client as _oai_base  # type: ignore  # noqa: PLC0415
 
     _oai_base.BaseClient.user_agent = property(lambda self: "bluehands-agent/1.0")
+
+    _orig_oh_build = _oai_base.BaseClient._build_headers
+
+
+    def _oh_patched_build(self, *args: object, **kw: object) -> object:  # type: ignore[no-untyped-def]
+        headers = _orig_oh_build(self, *args, **kw)
+        headers["User-Agent"] = "bluehands-agent/1.0"
+        return headers
+
+    _oai_base.BaseClient._build_headers = _oh_patched_build
 
     # Strip whichever prefix was used ("custom/foo" -> "foo", "openai/foo" -> "foo")
     for prefix in (_CUSTOM_PREFIX, "openai/"):

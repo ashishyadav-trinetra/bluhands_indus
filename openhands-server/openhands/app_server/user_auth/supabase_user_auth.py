@@ -214,16 +214,12 @@ class SupabaseUserAuth(UserAuth):
             getattr(settings, 'llm_api_key_is_set', False)
         )
         if not has_key:
-            # Precedence: platform admins build on the OpenRouter paid model;
-            # everyone else on an allowed org domain gets the self-hosted model.
-            # Users who are neither get nothing (must upgrade).
-            diff = (
-                _platform_llm_diff()
-                if _is_platform_admin(self._user_email)
-                else None
-            )
-            if diff is None:
-                diff = _selfhosted_llm_diff(self._user_email)
+            # Precedence: domain-matched users (including admins) get the
+            # self-hosted model first. Admins without a domain match fall back
+            # to the OpenRouter paid model. Users who are neither get nothing.
+            diff = _selfhosted_llm_diff(self._user_email)
+            if diff is None and _is_platform_admin(self._user_email):
+                diff = _platform_llm_diff()
             if diff is not None:
                 if settings is None:
                     settings = Settings()
