@@ -53,7 +53,8 @@ export const useUnifiedGetGitChanges = () => {
         gitPath,
       );
     },
-    retry: false,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 15000),
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 15, // 15 minutes
     refetchOnMount: "always", // Always refetch when mounting (e.g. navigating between conversations that share a sandbox)

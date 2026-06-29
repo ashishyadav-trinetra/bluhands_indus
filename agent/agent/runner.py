@@ -374,7 +374,13 @@ class OpenHandsRunner:
             )
             # Reuse the sandbox we already provisioned so the SDK doesn't cold-start
             # a second one. E2B sessions expose a non-local sandbox_id.
-            conv_kwargs: dict = {"workspace": session.workdir}
+            conv_kwargs: dict = {
+                "workspace": session.workdir,
+                # Disable confirmation mode: removes security_risk as a required
+                # tool-call field, preventing "Failed to provide security_risk"
+                # validation errors when the LLM omits it.
+                "confirmation_mode": False,
+            }
             sandbox_id = getattr(session, "sandbox_id", None)
             if sandbox_id and not sandbox_id.startswith("local-"):
                 conv_kwargs["sandbox_type"] = "e2b"

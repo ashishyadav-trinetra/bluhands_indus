@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import { AgentState } from "#/types/agent-state";
-import { generateAgentStateChangeEvent } from "#/services/agent-state-service";
+import ActionType from "#/types/action-type";
 import { ActionTooltip } from "../action-tooltip";
 import { isOpenHandsAction, isActionOrObservation } from "#/types/core/guards";
 import { ActionSecurityRisk } from "#/stores/security-analyzer-store";
@@ -45,7 +45,7 @@ export function ConfirmationButtons() {
       }
 
       addSubmittedEventId(awaitingAction.id);
-      send(generateAgentStateChangeEvent(state));
+      send({ action: ActionType.CHANGE_AGENT_STATE, args: { agent_state: state } });
     },
     [send, addSubmittedEventId],
   );

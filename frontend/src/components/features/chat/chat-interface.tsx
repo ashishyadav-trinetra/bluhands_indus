@@ -3,7 +3,7 @@ import { usePostHog } from "posthog-js/react";
 import { useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { convertImageToBase64 } from "#/utils/convert-image-to-base-64";
-import { createChatMessage } from "#/services/chat-service";
+import ActionType from "#/types/action-type";
 import { BtwMessages } from "./btw-messages";
 import { InteractiveChatBox } from "./interactive-chat-box";
 import { AgentState } from "#/types/agent-state";
@@ -199,7 +199,7 @@ export function ChatInterface() {
       uploadedFiles.length > 0 ? `${content}\n\n${filePrompt}` : content;
 
     const result = await send(
-      createChatMessage(prompt, imageUrls, uploadedFiles, timestamp),
+      { action: ActionType.MESSAGE, args: { content: prompt, image_urls: imageUrls, file_urls: uploadedFiles, timestamp } },
     );
     // Only show optimistic UI if message was sent immediately via WebSocket
     // If queued for later delivery, the message will appear when actually delivered

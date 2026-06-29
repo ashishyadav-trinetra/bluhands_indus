@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useConversationStore } from "#/stores/conversation-store";
 import { useSendMessage } from "#/hooks/use-send-message";
-import { createChatMessage } from "#/services/chat-service";
+import ActionType from "#/types/action-type";
 import { useOptimisticUserMessageStore } from "#/stores/optimistic-user-message-store";
 
 /**
@@ -28,7 +28,7 @@ export const useHandleBuildPlanClick = () => {
 
       // Send the message to the code agent
       const timestamp = new Date().toISOString();
-      send(createChatMessage(buildPrompt, [], [], timestamp));
+      send({ action: ActionType.MESSAGE, args: { content: buildPrompt, image_urls: [], file_urls: [], timestamp } });
       setOptimisticUserMessage(buildPrompt);
     },
     [setConversationMode, send, setOptimisticUserMessage],

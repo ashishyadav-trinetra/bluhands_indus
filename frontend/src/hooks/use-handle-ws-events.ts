@@ -1,6 +1,6 @@
 import React from "react";
-import { generateAgentStateChangeEvent } from "#/services/agent-state-service";
 import { AgentState } from "#/types/agent-state";
+import ActionType from "#/types/action-type";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { useEventStore } from "#/stores/use-event-store";
 import { useSendMessage } from "#/hooks/use-send-message";
@@ -41,7 +41,7 @@ export const useHandleWSEvents = () => {
       const message: string = `${event.message}`;
       if (message.startsWith("Agent reached maximum")) {
         // We set the agent state to paused here - if the user clicks resume, it auto updates the max iterations
-        send(generateAgentStateChangeEvent(AgentState.PAUSED));
+        send({ action: ActionType.CHANGE_AGENT_STATE, args: { agent_state: AgentState.PAUSED } });
       }
     }
   }, [events.length]);

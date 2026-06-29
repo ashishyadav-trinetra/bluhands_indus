@@ -6,14 +6,21 @@ Deployment: EC2 `ip-172-31-8-128`, repo at `~/var/www/bluhands_indus` (a clone o
 
 ---
 
-> **2026-06-27 update:** Root-caused why builds did nothing. Three stacked bugs, now fixed in the repo (frontend rebuild pending on the server): (a) `/api/` config routing, (b) `/sockets/` WS routing, (c) `createConversation` was undefined so "Start building" never called the build API. After the frontend rebuild, the open question is whether the OSS app-server's `RUNTIME=process` agent actually executes the conversation end-to-end (see Known Issues #2).
+> **2026-06-27 — END-TO-END WORKING.** A build now runs the full path: prompt → smart clarify → enhance → create conversation → agent-server spawns → 52 skills load → agent executes → **output and errors stream live into the conversation view**. GitHub connect + repo picker work natively. The only thing blocking a *successful* build right now is an **empty OpenRouter balance** (the agent's LLM call 402s — and that error is now clearly shown). Top up credits and builds complete. Everything below the "Runtime chain" timeline (items 8–14) is what it took to get the V1 live runtime working behind one public domain.
+>
+> **One root cause for the remaining rough edges:** with OpenRouter near-zero, every LLM-driven feature degrades silently — the build 402s, the *smart* clarify falls back to generic questions, and conversation auto-titles fall back to the raw prompt (why "Recents" shows full prompts). Add credits → all three come back. Optional hardening: run clarify + titles on a cheap small model so they never degrade (see Known Issues).
 
-## 1. What works right now (2026-06-26)
+## 1. What works right now (2026-06-27)
 
-- **Auth** — Supabase login → forge verifies the JWT via **JWKS** (ES256). `GET /forge/api/v1/auth/me` returns 200 once the token is attached. (The first one or two 401s on page load are just pre-token requests.)
-- **Settings pages** — LLM, Skills, Secrets, etc. render. Backed by the **vendored OSS OpenHands app-server** (new this session), not the old `0.38` image.
-- **Forced LLM popup** — suppressed. A default platform model is seeded so `/api/v1/settings` returns 200 instead of 404.
-- **Builds** — dispatch reaches the agent (the MissingGreenlet 500 is fixed). **But failures are not surfaced to the UI** — see Known Issues #1.
+- **Auth** — Supabase login → forge verifies the JWT via **JWKS** (ES256). `GET /forge/api/v1/auth/me` returns 200 once the token is attached.
+- **Settings pages** — LLM, Skills, Secrets, Integrations, etc. render. Backed by the **vendored OSS OpenHands app-server**, not the old `0.38` image.
+- **Forced LLM popup** — suppressed (seeded a default platform model so `/api/v1/settings` is 200).
+- **Builds run end-to-end** — Start building → `POST /api/v1/app-conversations` → per-conversation **agent-server** spawns (process runtime) → health check passes → **52 skills load** → agent executes → output + errors **stream live** over the conversation WebSocket. The live agent view (App/Changes/Code/Terminal/Planner/Browser) is reachable.
+- **Error visibility** — agent failures (e.g. LLM 402 low-balance) now render in the conversation, not a silent "Error occurred."
+- **GitHub (native OpenHands)** — connect a PAT in Settings → Integrations; the repo picker lists the user's repos; the agent can clone/push/PR in-sandbox. Nango GitHub duplicate removed.
+- **Connectors (Nango)** — the marketplace page loads again (integrations routed back to forge). Connecting still needs a valid `FORGE_NANGO_SECRET_KEY` on the server.
+
+**Blocking a *successful* build today:** empty OpenRouter balance (top up at openrouter.ai/settings/credits).
 
 ---
 
@@ -41,6 +48,34 @@ Key point learned the hard way: there are **two nginxes**. The host nginx above 
 The frontend's openHands axios calls **bare** `/api/v1/...` (→ app-server). The forge axios calls go under the **`/forge/`** prefix. So: bare `/api/` = app-server, `/forge/` = forge. They do not collide as long as the host nginx keeps that split.
 
 ---
+
+### How a build travels (end-to-end, 2026-06-27)
+
+```
+Browser (app.bluehands.ai, via Cloudflare)
+  │
+  ├─ /                         → frontend container (:3300)  — the SPA
+  ├─ /forge/api/v1/*           → forge / control-plane (:8001) — auth, orgs, admin,
+  │                                                              agent/clarify, agent/enhance
+  ├─ /api/v1/integrations/*    → forge (:8001)               — Nango connector marketplace
+  ├─ /api/*  (everything else) → app-server (:3000)          — settings, skills, secrets,
+  │                                                              web-client/config, conversations
+  ├─ /sockets/*                → app-server (:3000)          — (reserved; main-host sockets)
+  └─ /runtime/{port}/*         → agent-server (:{port})      — per-conversation live stream + WS
+
+Build sequence:
+1. Prompt → forge /api/v1/agent/clarify  (smart questions; LLM)
+2. Answers → forge /api/v1/agent/enhance (production-shaped prompt; LLM)
+3. Start building → app-server POST /api/v1/app-conversations  (creates a start task)
+4. app-server spawns an agent-server subprocess on a dynamic port (18000+),
+   health-checks localhost:{port}/alive, loads skills.
+5. Browser opens wss://app.bluehands.ai/runtime/{port}/sockets/events/{id}
+   → host nginx → agent-server → agent output + errors stream into the view.
+6. Agent runs (LLM = the seeded OpenRouter model); GitHub token (if connected)
+   lets it clone/push/PR inside the sandbox.
+```
+
+Two LLM budgets to know: the **agent service** (`agent/`, forge FSM — now mostly dormant) and the **app-server's seeded settings LLM** (what conversations actually use). The forge `clarify`/`enhance` calls also use an LLM. All currently point at OpenRouter; all degrade when the balance is empty.
 
 ## 3. The vendored app-server (`openhands-server/`) — new this session
 
@@ -75,6 +110,16 @@ curl -sS -X POST http://localhost:3000/api/v1/settings -H "Content-Type: applica
 9. **"Start building" never fired the build API — fixed.** `frontend/src/routes/home.tsx` destructured only `isPending` from `useCreateConversation()` and forgot `mutate: createConversation`. So clicking Start building called an **undefined** `createConversation(...)` → `ReferenceError` thrown *before* any request → `POST /api/v1/app-conversations` was never sent, overlay closed, silent bounce back to home. Fixed by destructuring `mutate: createConversation`. **Needs a frontend rebuild** (`docker compose build --no-cache frontend && docker compose up -d frontend` + Cloudflare purge).
 
 ---
+
+### Runtime chain — making the live conversation actually run (2026-06-27)
+
+These are the V1-runtime-behind-one-domain fixes, in the order we hit them:
+
+10. **Agent-server health check failed** (`SandboxError: Agent Server Failed to start properly`). The app-server spawns each conversation's agent-server as an **in-container subprocess** (`python -m openhands.agent_server --port N`), then health-checks `localhost:N/alive` — but `replace_localhost_hostname_for_docker` rewrites `localhost → host.docker.internal` (meant for cross-container setups). Fix: `extra_hosts: ["host.docker.internal:127.0.0.1"]` on the `openhands` service so the rewrite points back at the container.
+11. **Conversation create 500** — agent init needs **Chromium** for the browser tool. Fix: `playwright install --with-deps chromium` in `openhands-server/Dockerfile`.
+12. **Nango integrations 404 (regression)** — routing all `/api/` to the app-server broke forge's bare `/api/v1/integrations`. Fix: a more-specific nginx location sends `/api/v1/integrations` → forge `:8001`.
+13. **Live-view WebSocket failed** — the agent-server URL leaked a raw port (`app.bluehands.ai:18001`). Fix: set `SANDBOX_CONTAINER_URL_PATTERN=https://app.bluehands.ai/runtime/{port}` so the browser gets a proxyable URL, plus an nginx regex `location ~ ^/runtime/(\d+)/...` that reverse-proxies to the agent-server port (WS upgrade headers included).
+14. **Host nginx couldn't reach the agent-server port** — those ports live inside the `openhands` container, which only published `3000`. Fix: publish range `18000-18030:18000-18030` (assumes the agent-server binds `0.0.0.0`; verify).
 
 ## 4b. GitHub = OpenHands-native (decided 2026-06-27)
 

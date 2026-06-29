@@ -149,7 +149,3 @@ class CreditServiceProtocol(Protocol):
         build_run_id: uuid.UUID,
         idempotency_key: str,
     ) -> None: ...
-
-
-class AuditLoggerProtocol(Protocol):
-    async def record(self, event: AuditEvent) -> None: ...
