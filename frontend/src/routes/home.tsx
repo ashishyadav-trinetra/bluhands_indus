@@ -327,7 +327,15 @@ function HomeScreen() {
 
   const uiBusy = isPending || checking;
 
-  const userName = settings?.git_user_name || user.data?.login || "there";
+  // Prefer the authenticated user's real identity (forge/Supabase) over the
+  // per-user OpenHands git name, which is empty for fresh users.
+  const userName =
+    forgeMe?.full_name ||
+    forgeMe?.display_name ||
+    settings?.git_user_name ||
+    user.data?.login ||
+    forgeMe?.email?.split("@")[0] ||
+    "there";
   const firstName = userName.split(" ")[0];
 
   // Extract current model display name

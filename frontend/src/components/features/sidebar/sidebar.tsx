@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useGitUser } from "#/hooks/query/use-git-user";
+import { useForgeMe } from "#/hooks/query/use-forge-me";
 import { UserActions } from "./user-actions";
 import { SettingsModal } from "#/components/shared/modals/settings/settings-modal";
 import { useSettings } from "#/hooks/query/use-settings";
@@ -43,6 +44,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const { conversationId: currentConversationId } = useParams();
   const user = useGitUser();
+  const { data: forgeMe } = useForgeMe();
   const { data: config } = useConfig();
   const {
     data: settings,
@@ -127,7 +129,13 @@ export function Sidebar() {
   ]);
 
   // Get user display name/initials
-  const userName = settings?.git_user_name || user.data?.login || "User";
+  const userName =
+    forgeMe?.full_name ||
+    forgeMe?.display_name ||
+    settings?.git_user_name ||
+    user.data?.login ||
+    forgeMe?.email?.split("@")[0] ||
+    "User";
   const userInitials = userName
     .split(" ")
     .map((n: string) => n[0])

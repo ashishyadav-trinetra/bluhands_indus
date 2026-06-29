@@ -166,6 +166,25 @@ conversations scope by `created_by_user_id`.
 steps in **`deploy/MULTI-TENANCY.md`**. **Do not onboard real users until this is
 verified** — until then everyone shares one account.
 
+**Conversation isolation (2026-06-29):** the OSS conversation layer had **no
+owner** at all (`created_by_user_id` hardcoded `None`, `_secure_select` filtered
+only by `V1`). Patched `sql_app_conversation_info_service.py`: added a `user_id`
+column, `_secure_select` now scopes to the authenticated user, and
+`save_app_conversation_info` stamps the owner (preserving it on system updates).
+**The new column means the conversation DB must be reset** (create_all won't ALTER
+an existing table) — delete the app-server SQLite DB / recreate the
+`openhands_data` volume on deploy, or every list query errors on the missing
+column. Existing (shared) chats are wiped — they're throwaway.
+
+**User name (2026-06-29):** `home.tsx` greeting + sidebar now use the real
+identity (`forgeMe.full_name / display_name / email`) instead of the empty
+per-user git name, so it shows the person's name, not "User"/"there".
+
+**OpenRouter-key abuse:** now handled *by the isolation itself* — settings are
+per-user, so a regular user has no LLM key and cannot use the admin's. The
+follow-up is the opposite: **seed the platform model+key into admin users'
+settings** so admins can build, while normal users get "upgrade to Pro".
+
 ## 5. Known issues / follow-ups (priority order)
 
 1. **Build failure visibility (HIGH).** When a build fails — e.g. OpenRouter **low balance → LLM 402** — nothing clear surfaces in the UI. Need: agent captures the failure reason → control-plane stores it on the build status → frontend shows a clear error toast/banner (not a silent stop). Today the only way to see why is `docker compose logs -f agent` / `worker`. _Where to work: `agent/agent/runner.py` error propagation → `control-plane` build status model/route → frontend build status handling._

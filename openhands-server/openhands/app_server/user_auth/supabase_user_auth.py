@@ -95,6 +95,44 @@ def _decode_supabase_token(token: str) -> dict | None:
         return None
 
 
+def _is_platform_admin(email: str | None) -> bool:
+    """True when this user's email is in BLUHANDS_ADMIN_EMAILS (comma-separated)."""
+    raw = os.getenv('BLUHANDS_ADMIN_EMAILS', '')
+    e = (email or '').strip().lower()
+    if not e:
+        return False
+    return e in {a.strip().lower() for a in raw.split(',') if a.strip()}
+
+
+def _default_platform_settings() -> Settings | None:
+    """Settings pre-loaded with the PLATFORM model + key (admins only).
+
+    Lets platform admins build immediately on the company's OpenRouter key.
+    Normal users get no settings → they cannot use this key (must upgrade).
+    Returns None if the platform model/key env isn't configured.
+    """
+    model = os.getenv('BLUHANDS_PLATFORM_LLM_MODEL')
+    api_key = os.getenv('BLUHANDS_PLATFORM_LLM_API_KEY')
+    if not (model and api_key):
+        return None
+    settings = Settings()
+    settings.update(
+        {
+            'agent_settings_diff': {
+                'llm': {
+                    'model': model,
+                    'api_key': api_key,
+                    'base_url': os.getenv(
+                        'BLUHANDS_PLATFORM_LLM_BASE_URL',
+                        'https://openrouter.ai/api/v1',
+                    ),
+                }
+            }
+        }
+    )
+    return settings
+
+
 @dataclass
 class SupabaseUserAuth(UserAuth):
     """Supabase-based user authentication.
@@ -139,6 +177,16 @@ class SupabaseUserAuth(UserAuth):
             return settings
         settings_store = await self.get_user_settings_store()
         settings = await settings_store.load()
+        # BluHands: platform admins get the company model+key seeded on first use
+        # so they can build immediately. Normal users get nothing (must upgrade),
+        # so they can never use the admin's OpenRouter key.
+        if settings is None and _is_platform_admin(self._user_email):
+            settings = _default_platform_settings()
+            if settings is not None:
+                try:
+                    await settings_store.store(settings)
+                except Exception:  # noqa: BLE001 - seeding is best-effort
+                    pass
         self._settings = settings
         return settings
 

@@ -52,6 +52,15 @@ services:
       SUPABASE_JWKS_URL: "${SUPABASE_JWKS_URL:-}"
       SUPABASE_JWT_SECRET: "${SUPABASE_JWT_SECRET:-}"
       WEB_HOST: "${WEB_HOST:-app.bluehands.ai}"
+      # ── Admin model/key seed ─────────────────────────────────────────────────
+      # Platform admins (emails below) get the company model + OpenRouter key
+      # seeded into their per-user settings on first login, so THEY can build on
+      # the company key. Normal users get nothing → they must upgrade and can
+      # never use this key. Set BLUHANDS_ADMIN_EMAILS in .env (comma-separated).
+      BLUHANDS_ADMIN_EMAILS: "${BLUHANDS_ADMIN_EMAILS:-}"
+      BLUHANDS_PLATFORM_LLM_MODEL: "${BLUHANDS_PLATFORM_LLM_MODEL:-openrouter/anthropic/claude-sonnet-4.5}"
+      BLUHANDS_PLATFORM_LLM_API_KEY: "${OPENROUTER_API_KEY:-}"
+      BLUHANDS_PLATFORM_LLM_BASE_URL: "https://openrouter.ai/api/v1"
       # LLM is configured per-user via the UI Settings page (settings store).
       # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"

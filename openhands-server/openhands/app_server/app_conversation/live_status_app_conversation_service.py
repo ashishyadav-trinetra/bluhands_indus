@@ -191,6 +191,9 @@ Proxy-aware auth (the app is served over an HTTPS reverse proxy, not localhost):
 Verify in a REAL browser before finishing (you have a browser tool — use it):
 - Screenshot the landing page through the proxied URL; confirm the real H1/hero
   renders, not a blank page, error, or loading spinner.
+- SAVE that landing-page screenshot to `/app/workspace/.bluhands-thumbnail.png`
+  (1280x800, the hero/top of the page). It becomes the project's thumbnail card,
+  so make it the most visually representative shot of the finished app.
 - Drive the primary flow end to end in the browser (e.g. log in with a seeded
   account) and confirm it succeeds from the UI, not just via curl.
 - If a screenshot is blank or a flow fails, FIX it and re-verify. Never declare

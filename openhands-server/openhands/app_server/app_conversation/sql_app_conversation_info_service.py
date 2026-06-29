@@ -111,6 +111,11 @@ class StoredConversationMetadata(Base):
     )
     public: Mapped[bool | None] = mapped_column(nullable=True, index=True)
 
+    # BluHands: owner (Supabase user id) for per-user conversation isolation.
+    # Nullable for legacy/anonymous rows. NOTE: this column is new — the existing
+    # conversation DB must be migrated/wiped so it exists before this code runs.
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
     # Tags for conversation metadata (e.g., automation context, skills used)
     tags: Mapped[dict[str, str] | None] = mapped_column(
         create_json_type_decorator(dict[str, str]), nullable=True
@@ -383,6 +388,19 @@ class SQLAppConversationInfoService(AppConversationInfoService):
             tags=info.tags if info.tags else None,
         )
 
+        # BluHands: stamp the owner so the conversation is isolated to this user.
+        # Preserve an existing owner on background/system updates (which run with
+        # no user context → 'default'), so we never orphan a conversation.
+        owner_id = await self.user_context.user_auth.get_user_id()
+        if owner_id == 'default':
+            owner_id = None
+        if owner_id is None:
+            existing = await self.db_session.get(
+                StoredConversationMetadata, str(info.id)
+            )
+            owner_id = existing.user_id if existing else None
+        stored.user_id = owner_id
+
         try:
             await self.db_session.merge(stored)
             await self.db_session.commit()
@@ -524,6 +542,14 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         query = select(StoredConversationMetadata).where(
             StoredConversationMetadata.conversation_version == 'V1'
         )
+        # BluHands per-user isolation: an authenticated user only ever sees their
+        # OWN conversations; an anonymous/'default' caller sees only unowned rows.
+        # Without this every user saw everyone's chats (the OSS layer has no owner).
+        owner_id = await self.user_context.user_auth.get_user_id()
+        if owner_id and owner_id != 'default':
+            query = query.where(StoredConversationMetadata.user_id == owner_id)
+        else:
+            query = query.where(StoredConversationMetadata.user_id.is_(None))
         return query
 
     def _to_info(
