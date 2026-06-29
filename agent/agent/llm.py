@@ -15,8 +15,14 @@ _OPENROUTER_PREFIX = "openrouter/"
 
 
 def _is_custom_model(model: str) -> bool:
-    """Return ``True`` if the model name uses the ``custom/`` prefix."""
-    return model.startswith(_CUSTOM_PREFIX)
+    """Return ``True`` if the model name uses a custom-model prefix.
+
+    Both ``custom/`` and ``openai/`` prefixes are recognised when
+    ``custom_model_enabled`` is set — the ``openai/`` prefix is what the
+    OpenHands app-server seed (``_selfhosted_llm_diff``) produces for
+    self-hosted models so LiteLLM stays in chat-completion mode.
+    """
+    return model.startswith(_CUSTOM_PREFIX) or model.startswith("openai/")
 
 
 def build_llm(settings: Settings, model: str | None = None):
@@ -87,7 +93,13 @@ def _build_custom_llm(settings: Settings, model: str):
 
     _oai_base.OpenAI.user_agent = "bluehands-agent/1.0"
 
-    stripped = model.removeprefix(_CUSTOM_PREFIX)  # "custom/foo" -> "foo"
+    # Strip whichever prefix was used ("custom/foo" -> "foo", "openai/foo" -> "foo")
+    for prefix in (_CUSTOM_PREFIX, "openai/"):
+        if model.startswith(prefix):
+            stripped = model.removeprefix(prefix)
+            break
+    else:
+        stripped = model
     return LLM(
         model=stripped,
         api_key=SecretStr(settings.custom_model_api_key),
@@ -144,7 +156,12 @@ def _make_custom_completion(settings: Settings, model: str):
         base_url=settings.custom_model_base_url,
         api_key=settings.custom_model_api_key,
     )
-    stripped = model.removeprefix(_CUSTOM_PREFIX)
+    for prefix in (_CUSTOM_PREFIX, "openai/"):
+        if model.startswith(prefix):
+            stripped = model.removeprefix(prefix)
+            break
+    else:
+        stripped = model
 
     def _complete(system: str, user: str) -> str:
         resp = client.chat.completions.create(
