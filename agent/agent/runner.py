@@ -196,6 +196,14 @@ class OpenHandsRunner:
                         for k, v in env_template.items()
                         if v.format(**_subs)  # skip keys whose value resolves to empty
                     ]
+                    # Inject the public sandbox URL so the app uses the proxy, not localhost.
+                    # This fixes cookie domains, CORS, and absolute-URL generation.
+                    _proxy_base_env = self._settings.preview_proxy_base.rstrip("/")
+                    if _proxy_base_env:
+                        _env_port = spec.preview_port or int((spec.manifest or {}).get("defaultPort", 3000))
+                        _pub_url = f"{_proxy_base_env}/{_env_port}/"
+                        env_lines.append(f"NEXT_PUBLIC_APP_URL={_pub_url}")
+                        env_lines.append(f"APP_URL={_pub_url}")
                     if env_lines:
                         (tmp_path / ".env.local").write_text(
                             "\n".join(env_lines) + "\n", encoding="utf-8"
@@ -338,8 +346,13 @@ class OpenHandsRunner:
         from agent.clarify import apply_answers
         from agent.prompt import compose_build_prompt
 
+        _manifest = spec.manifest or {}
+        _preview_port = spec.preview_port or int(_manifest.get("defaultPort", 3000))
+        _proxy_base = self._settings.preview_proxy_base.rstrip("/")
+        _sandbox_url = f"{_proxy_base}/{_preview_port}/" if _proxy_base else ""
+
         prompt = compose_build_prompt(
-            manifest=spec.manifest or {},
+            manifest=_manifest,
             base_prompt=spec.enhanced_prompt or spec.prompt,
             brand=spec.brand,
             business=spec.business,
@@ -347,6 +360,7 @@ class OpenHandsRunner:
             feature_flags=spec.feature_flags,
             user_request=apply_answers(spec.clarifications),
             industry=spec.industry,
+            sandbox_url=_sandbox_url,
         )
         try:
             await session.write_file(f"{session.workdir}/.bluhands-prompt.txt", prompt)

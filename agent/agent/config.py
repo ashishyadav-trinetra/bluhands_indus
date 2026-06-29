@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # None means the runner will error with a clear message if a real build is attempted.
     starter_dir: Path | None = None
 
+    # Base URL of the reverse proxy that exposes sandbox ports to the outside world.
+    # The agent receives {preview_proxy_base}/{port}/ as its public URL so it can
+    # configure CORS, cookies, and absolute URLs correctly.
+    # Example: https://app.bluehands.ai/runtime
+    preview_proxy_base: str = ""
+
     def openrouter_api_key(self) -> str | None:
         """Read the OpenRouter key from its conventional env var."""
         import os

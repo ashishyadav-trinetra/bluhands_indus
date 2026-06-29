@@ -89,6 +89,10 @@ services:
       E2B_API_KEY: "${E2B_API_KEY:-}"
       # Persistence: workspace survives agent restarts (named volume below).
       AGENT_WORKSPACE_ROOT: "/var/bluhands-builds"
+      # Base URL of the reverse proxy that exposes sandbox ports to users.
+      # The agent injects this into every build prompt so the app configures
+      # CORS, cookies, and NEXT_PUBLIC_APP_URL against the proxy, not localhost.
+      AGENT_PREVIEW_PROXY_BASE: "${AGENT_PREVIEW_PROXY_BASE:-https://app.bluehands.ai/runtime}"
       # JobStore backs to Redis so in-flight job status survives restarts.
       # Points at the control-plane's cache service on the shared compose network.
       AGENT_REDIS_URL: "redis://cache:6379/1"

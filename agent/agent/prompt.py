@@ -54,6 +54,80 @@ _ECOMMERCE_BASE = (
     "than reinventing them."
 )
 
+_OUTPUT_RULES = """\
+## Autonomous execution rules (STRICT — follow without exception)
+
+You are a **fully autonomous builder**. The user cannot run commands or set up files.
+Every step — installs, migrations, seeding, writing env files, starting the server — is yours.
+
+- **Never tell the user to run a command.** You run it.
+- **Write .env files yourself.** If the app needs environment variables, write `.env.local`
+  (or `.env`) directly with the values you know. Use sane development defaults. Never
+  say "set up your .env" or "add this to .env.local".
+- **Never narrate security choices.** Do not list that you implemented JWT, bcrypt, CORS,
+  rate limiting, etc. Just implement them silently.
+- **Never declare done without live verification.** Before finishing, confirm the app is
+  running and returns real HTML. Use curl or the Playwright check below.
+- **No "to run locally" sections.** No setup checklists. No bullet lists of what you built.
+  Your final message: one short sentence confirming the app is live and the URL.\
+"""
+
+_PLAYWRIGHT_VERIFICATION = """\
+## Browser verification (REQUIRED before finishing)
+
+After the app is running, verify it visually with Playwright:
+
+```bash
+# Install headless Chromium in the sandbox (one-time, ~30s)
+npx --yes playwright install chromium --with-deps 2>/dev/null || true
+
+# Screenshot the landing page — read the image to check layout
+node -e "
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch();
+  const p = await b.newPage();
+  await p.goto(process.env.APP_PUBLIC_URL || 'http://localhost:3000', { waitUntil: 'networkidle' });
+  await p.screenshot({ path: '/tmp/landing.png', fullPage: true });
+  console.log('title:', await p.title());
+  console.log('h1:', await p.locator('h1').first().textContent().catch(() => '(none)'));
+  await b.close();
+})();
+"
+```
+
+Read `/tmp/landing.png` with the file_viewer tool. Verify:
+- Page is not blank and not showing an error/JSON response
+- H1 heading is present and correct
+- Layout and fonts are not broken
+
+If auth exists: also navigate to the login page, fill credentials, and confirm login works.\
+"""
+
+
+def _sandbox_section(sandbox_url: str) -> str:
+    """Return the sandbox environment context block, or empty string if no URL."""
+    if not sandbox_url:
+        return ""
+    return f"""\
+## Sandbox environment (CRITICAL)
+
+You are running inside an isolated sandbox VM. The **outside world accesses your app through
+a reverse proxy** — `localhost` URLs are never reachable by the user.
+
+Your app's public URL is: **{sandbox_url}**
+
+Mandatory configuration — do these before starting the server:
+1. Write `NEXT_PUBLIC_APP_URL={sandbox_url}` (or `APP_URL` / `BASE_URL` — whatever the
+   framework uses) into the project's `.env.local` / `.env` file.
+2. Set cookies with `sameSite: 'none'` and `secure: true`. Cookies scoped to `localhost`
+   are dropped by the browser when accessed via `https://`.
+3. Configure CORS (if any) to allow `https://app.bluehands.ai` as an origin.
+4. Do NOT set a `basePath` — the proxy strips the path prefix before forwarding.
+
+For Playwright verification use: `APP_PUBLIC_URL={sandbox_url}`\
+"""
+
 
 def compose_build_prompt(
     *,
@@ -65,6 +139,7 @@ def compose_build_prompt(
     feature_flags: list[str] | None = None,
     user_request: str = "",
     industry: str | None = None,
+    sandbox_url: str = "",
 ) -> str:
     """Render the full build prompt. Deterministic given the same inputs."""
     from agent.prompts import load_base_prompt
@@ -77,6 +152,17 @@ def compose_build_prompt(
     skills = load_skills(industry)
     if skills:
         parts.append(skills)
+
+    # Sandbox URL + cookie/CORS requirements — always injected when a URL is known.
+    sandbox_block = _sandbox_section(sandbox_url)
+    if sandbox_block:
+        parts.append(sandbox_block)
+
+    # Autonomous execution rules — always injected.
+    parts.append(_OUTPUT_RULES)
+
+    # Playwright verification requirement — always injected.
+    parts.append(_PLAYWRIGHT_VERIFICATION)
 
     if base_prompt.strip():
         parts.append("## Plan\n" + base_prompt.strip())
