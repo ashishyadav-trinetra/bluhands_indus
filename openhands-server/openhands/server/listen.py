@@ -13,12 +13,12 @@ import os
 import httpx._models as _oh_httpx_models  # noqa: E402
 
 # The Cloudflare WAF on api.bluehands.ai blocks the OpenAI Python SDK's default
-# User-Agent ("OpenAI/Python ...").  Monkey-patch it at the class level so every
-# OpenAI client created in this process uses a safe UA.  This also avoids the
-# "Your request was blocked" error for self-hosted models behind the WAF.
+# User-Agent ("OpenAI/Python ...").  Replace the user_agent property on the
+# base client class so every OpenAI/LiteLLM client uses a safe UA.  This avoids
+# the "Your request was blocked" error for self-hosted models behind the WAF.
 import openai._base_client as _oai_base  # noqa: E402
 
-_oai_base.OpenAI.user_agent = "bluehands-agent/1.0"
+_oai_base.BaseClient.user_agent = property(lambda self: "bluehands-agent/1.0")
 
 from openhands.server.app import app as base_app
 from openhands.server.middleware import (

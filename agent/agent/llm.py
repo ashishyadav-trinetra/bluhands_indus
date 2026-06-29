@@ -84,14 +84,12 @@ def _build_custom_llm(settings: Settings, model: str):
             "openhands-sdk is not installed; run `pip install openhands-sdk`."
         ) from exc
 
-    # The OpenAI Python SDK's httpx client sends User-Agent: OpenAI/Python …
-    # by default from a class-level attribute.  The bluehands Cloudflare WAF
-    # blocks this header.  Patching the class attribute once is enough — the
-    # OpenRouter path is unaffected (it uses a different base URL and the
-    # custom UA is harmless there).
+    # The OpenAI Python SDK sends User-Agent: OpenAI/Python …  The bluehands
+    # Cloudflare WAF blocks this header.  Replace the user_agent property on
+    # the base client class so every OpenAI/LiteLLM client uses a safe UA.
     import openai._base_client as _oai_base  # type: ignore  # noqa: PLC0415
 
-    _oai_base.OpenAI.user_agent = "bluehands-agent/1.0"
+    _oai_base.BaseClient.user_agent = property(lambda self: "bluehands-agent/1.0")
 
     # Strip whichever prefix was used ("custom/foo" -> "foo", "openai/foo" -> "foo")
     for prefix in (_CUSTOM_PREFIX, "openai/"):
