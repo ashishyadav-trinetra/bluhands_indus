@@ -391,7 +391,7 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         # BluHands: stamp the owner so the conversation is isolated to this user.
         # Preserve an existing owner on background/system updates (which run with
         # no user context → 'default'), so we never orphan a conversation.
-        owner_id = await self.user_context.user_auth.get_user_id()
+        owner_id = await self.user_context.get_user_id()
         if owner_id == 'default':
             owner_id = None
         if owner_id is None:
@@ -545,7 +545,7 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         # BluHands per-user isolation: an authenticated user only ever sees their
         # OWN conversations; an anonymous/'default' caller sees only unowned rows.
         # Without this every user saw everyone's chats (the OSS layer has no owner).
-        owner_id = await self.user_context.user_auth.get_user_id()
+        owner_id = await self.user_context.get_user_id()
         if owner_id and owner_id != 'default':
             query = query.where(StoredConversationMetadata.user_id == owner_id)
         else:
