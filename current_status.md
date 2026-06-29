@@ -131,6 +131,21 @@ GitHub is now handled entirely by the OpenHands app-server, not Nango/forge:
 - **Dead but not deleted (intentional):** the forge backend GitHub code (`github_service.py`, the `/github` route, `build_runs.github_*` columns, migration 0006, `build_executor._github_context`) and the `hooks/query/use-github.ts` frontend hook are now unused. Left in place because deleting DB columns/migrations is risky for no benefit. A future cleanup can remove them; nothing calls them.
 - **Follow-up (optional):** wire the native repo dropdown into the build start (`createConversation({ repository })` → conversation `selected_repository`) so users can pick an existing repo to build *on* from the UI. Today they connect once, then ask the agent in-conversation.
 
+## 4c. Which agent builds — and where its behaviour is set (IMPORTANT, 2026-06-27)
+
+There are **two** agents; do not confuse them:
+
+- **The real build agent** = the OpenHands **conversation** agent, spawned per build by the **app-server** (`openhands.agent_server`). Its system prompt = SDK template + `system_message_suffix`, built in `live_status_app_conversation_service.py`. The app-server already injects an `<APP_PREVIEW>` block (the `/runtime/{port}` proxy + asset-path recipe) and enables the browser tool. **This is what runs every build.**
+- **`agent/agent/`** = the **forge-FSM** agent service (`OpenHandsRunner`, `base_system_prompt.md`). It is **dormant** — builds no longer route through it. Editing its prompt/runner and running `docker compose build agent` has **zero effect** on real builds. (Left in place intentionally in case the FSM path is revived; just don't expect prompt edits there to change builds.)
+
+**BluHands build-behaviour layer (new):** `BLUHANDS_BUILD_RULES` is appended to every code-agent conversation's `system_message_suffix` in `live_status_app_conversation_service.py` — full autonomy (do migrations/env/seed yourself), proxy-aware auth (cookies `Secure`+`SameSite=None`, app-URL env at the proxied URL — fixes "login works in curl, not the browser"), enforced browser verification (screenshot + drive the login flow before finishing), and output discipline. Requires an `openhands` image rebuild.
+
+**`confirmation_mode` / `security_risk` error** is an app-server **conversation setting**, not `agent/runner.py`. Disable the security analyzer (so `security_risk` is no longer mandatory) by seeding it like the LLM — no rebuild:
+```bash
+curl -sS -X POST http://localhost:3000/api/v1/settings -H "Content-Type: application/json" \
+  -d '{"conversation_settings_diff":{"confirmation_mode":false}}'
+```
+
 ## 5. Known issues / follow-ups (priority order)
 
 1. **Build failure visibility (HIGH).** When a build fails — e.g. OpenRouter **low balance → LLM 402** — nothing clear surfaces in the UI. Need: agent captures the failure reason → control-plane stores it on the build status → frontend shows a clear error toast/banner (not a silent stop). Today the only way to see why is `docker compose logs -f agent` / `worker`. _Where to work: `agent/agent/runner.py` error propagation → `control-plane` build status model/route → frontend build status handling._
