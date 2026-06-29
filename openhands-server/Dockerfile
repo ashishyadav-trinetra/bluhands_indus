@@ -46,7 +46,11 @@ COPY openhands/ ./openhands/
 COPY config.toml ./
 COPY .openhands/ ./.openhands/
 
-ENV PYTHONPATH=/app \
+# httpx User-Agent patch — loaded automatically by Python's site module
+# in EVERY process (parent + subprocess sandboxes) to bypass Cloudflare WAF.
+COPY patches/ /app/patches/
+
+ENV PYTHONPATH=/app/patches:/app \
     PYTHONIOENCODING=utf-8 \
     LANG=C.UTF-8 \
     SERVE_FRONTEND=false
