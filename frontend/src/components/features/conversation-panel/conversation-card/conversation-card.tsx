@@ -49,6 +49,7 @@ export function ConversationCard({
 }: ConversationCardProps) {
   const posthog = usePostHog();
   const [titleMode, setTitleMode] = React.useState<"view" | "edit">("view");
+  const [isHovered, setIsHovered] = React.useState(false);
   const { mutateAsync: downloadConversation } = useDownloadConversation();
 
   const onTitleSave = (newTitle: string) => {
@@ -124,8 +125,10 @@ export function ConversationCard({
       data-testid="conversation-card"
       data-context-menu-open={contextMenuOpen.toString()}
       onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={cn(
-        "group/card relative h-auto w-full p-3.5 border-b border-neutral-600 cursor-pointer",
+        "relative h-auto w-full p-3.5 border-b border-neutral-600 cursor-pointer",
         "data-[context-menu-open=false]:hover:bg-[#454545]",
       )}
     >
@@ -149,9 +152,9 @@ export function ConversationCard({
               onClick={handleDelete}
               aria-label="Delete conversation"
               className={cn(
-                "opacity-0 translate-x-1 group-hover/card:opacity-100 group-hover/card:translate-x-0",
                 "transition-all duration-200 ease-out",
                 "p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400",
+                isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-1",
               )}
             >
               <DeleteIcon width={14} height={14} />
