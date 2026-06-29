@@ -104,33 +104,25 @@ def _is_platform_admin(email: str | None) -> bool:
     return e in {a.strip().lower() for a in raw.split(',') if a.strip()}
 
 
-def _default_platform_settings() -> Settings | None:
-    """Settings pre-loaded with the PLATFORM model + key (admins only).
-
-    Lets platform admins build immediately on the company's OpenRouter key.
-    Normal users get no settings → they cannot use this key (must upgrade).
-    Returns None if the platform model/key env isn't configured.
-    """
+def _platform_llm_diff() -> dict | None:
+    """The settings *diff* that grafts the PLATFORM model + key onto a user's
+    settings. Returns None if the platform model/key env isn't configured."""
     model = os.getenv('BLUHANDS_PLATFORM_LLM_MODEL')
     api_key = os.getenv('BLUHANDS_PLATFORM_LLM_API_KEY')
     if not (model and api_key):
         return None
-    settings = Settings()
-    settings.update(
-        {
-            'agent_settings_diff': {
-                'llm': {
-                    'model': model,
-                    'api_key': api_key,
-                    'base_url': os.getenv(
-                        'BLUHANDS_PLATFORM_LLM_BASE_URL',
-                        'https://openrouter.ai/api/v1',
-                    ),
-                }
+    return {
+        'agent_settings_diff': {
+            'llm': {
+                'model': model,
+                'api_key': api_key,
+                'base_url': os.getenv(
+                    'BLUHANDS_PLATFORM_LLM_BASE_URL',
+                    'https://openrouter.ai/api/v1',
+                ),
             }
         }
-    )
-    return settings
+    }
 
 
 @dataclass
@@ -177,12 +169,19 @@ class SupabaseUserAuth(UserAuth):
             return settings
         settings_store = await self.get_user_settings_store()
         settings = await settings_store.load()
-        # BluHands: platform admins get the company model+key seeded on first use
-        # so they can build immediately. Normal users get nothing (must upgrade),
-        # so they can never use the admin's OpenRouter key.
-        if settings is None and _is_platform_admin(self._user_email):
-            settings = _default_platform_settings()
-            if settings is not None:
+        # BluHands: platform admins build on the company model+key. Seed it
+        # whenever they have NO LLM key yet — not just when settings are absent
+        # (a settings row exists after the analytics-consent save, but with no
+        # LLM). Normal users get nothing → they can never use this key.
+        if _is_platform_admin(self._user_email):
+            has_key = settings is not None and bool(
+                getattr(settings, 'llm_api_key_is_set', False)
+            )
+            diff = None if has_key else _platform_llm_diff()
+            if diff is not None:
+                if settings is None:
+                    settings = Settings()
+                settings.update(diff)
                 try:
                     await settings_store.store(settings)
                 except Exception:  # noqa: BLE001 - seeding is best-effort
