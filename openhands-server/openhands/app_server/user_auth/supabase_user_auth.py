@@ -144,6 +144,13 @@ def _selfhosted_llm_diff(email: str | None) -> dict | None:
     allowed = {d.strip().lower() for d in domains.split(',') if d.strip()}
     if not domain or domain not in allowed:
         return None
+    # Force LiteLLM's OpenAI-compatible CHAT path. Without a provider prefix
+    # (or with a 'custom/' one) LiteLLM falls into a text-completion path that
+    # does `" ".join(message["content"])` and crashes on structured/list content
+    # ("expected str instance, list found"). Prepending openai/ keeps it a chat
+    # model that posts to {base_url}/chat/completions with the messages intact.
+    if not model.startswith(('openai/', 'hosted_vllm/', 'litellm_proxy/')):
+        model = f'openai/{model}'
     return {
         'agent_settings_diff': {
             'llm': {
