@@ -217,6 +217,9 @@ export function LlmSettingsScreen({
         isSaasMode && activeProvider === "openhands";
       const showOpenHandsApiKeyHelp = modelValue.startsWith("openhands/");
 
+      const isAssignmentLocked = settings?.assignment_locked === true;
+      const inputDisabled = isDisabled || isAssignmentLocked;
+
       const renderApiKeyInput = (testId: string, helpTestId: string) => {
         if (shouldUseOpenHandsKey) {
           return null;
@@ -236,7 +239,7 @@ export function LlmSettingsScreen({
               }
               placeholder={settings?.llm_api_key_set ? "<hidden>" : ""}
               onChange={(value) => onChange("llm.api_key", value)}
-              isDisabled={isDisabled}
+              isDisabled={inputDisabled}
               startContent={
                 settings?.llm_api_key_set ? (
                   <KeyStatusIcon isSet={settings.llm_api_key_set} />
@@ -256,6 +259,12 @@ export function LlmSettingsScreen({
 
       return (
         <div className="flex flex-col gap-6">
+          {isAssignmentLocked && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              Model and API key are managed by your organization.
+            </div>
+          )}
+
           {infoMessageKey ? (
             <p
               data-testid="llm-settings-info-message"
@@ -280,7 +289,7 @@ export function LlmSettingsScreen({
                   }
                 }}
                 wrapperClassName="!flex-col !gap-6"
-                isDisabled={isDisabled}
+                isDisabled={inputDisabled}
               />
 
               {showOpenHandsApiKeyHelp ? (
@@ -305,7 +314,7 @@ export function LlmSettingsScreen({
                 value={modelValue}
                 placeholder={defaultModel}
                 onChange={(value) => onChange("llm.model", value)}
-                isDisabled={isDisabled}
+                isDisabled={inputDisabled}
               />
 
               {showOpenHandsApiKeyHelp ? (
@@ -320,7 +329,7 @@ export function LlmSettingsScreen({
                 value={baseUrlValue}
                 placeholder="https://api.openai.com"
                 onChange={(value) => onChange("llm.base_url", value)}
-                isDisabled={isDisabled}
+                isDisabled={inputDisabled}
               />
 
               {renderApiKeyInput(
@@ -338,6 +347,7 @@ export function LlmSettingsScreen({
       defaultModel,
       selectedProvider,
       settings?.llm_api_key_set,
+      settings?.assignment_locked,
       t,
     ],
   );

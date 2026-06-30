@@ -12,6 +12,7 @@ export default [
     index("routes/admin/dashboard.tsx"),
     route("users", "routes/admin/users.tsx"),
     route("orgs", "routes/admin/orgs.tsx"),
+    route("assignments", "routes/admin/assignments.tsx"),
   ]),
   route("onboarding", "routes/onboarding-form.tsx"),
   route("information-request", "routes/information-request.tsx"),

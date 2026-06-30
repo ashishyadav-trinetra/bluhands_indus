@@ -144,4 +144,5 @@ export type Settings = {
   conversation_settings_schema?: SettingsSchema | null;
   conversation_settings?: Record<string, SettingsValue> | null;
   sandbox_grouping_strategy?: SandboxGroupingStrategy;
+  assignment_locked?: boolean;
 };

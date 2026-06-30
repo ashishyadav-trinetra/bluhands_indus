@@ -10,6 +10,7 @@ const NAV = [
   { label: "Dashboard", path: "/admin", icon: "📊" },
   { label: "Users", path: "/admin/users", icon: "👤" },
   { label: "Organisations", path: "/admin/orgs", icon: "🏢" },
+  { label: "Assignments", path: "/admin/assignments", icon: "🔒" },
 ];
 
 export default function AdminLayout() {
