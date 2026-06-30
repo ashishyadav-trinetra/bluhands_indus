@@ -91,6 +91,10 @@ services:
       # HOST nginx can reverse-proxy /runtime/{port}/ to them. (They must bind
       # 0.0.0.0 inside the container for this to work — verify; see notes.)
       - "18000-18030:18000-18030"
+      # Sandbox app-preview ports (agent-server port + 10000 offset).
+      # e.g. agent-server on 18000 → preview on 28000. Host nginx proxies
+      # /runtime/{port}/ → 127.0.0.1:{port} directly, so publish both ranges.
+      - "28000-28030:28000-28030"
     restart: on-failure
     healthcheck:
       # agent-schema needs no auth/DB — a 200 here proves the v1 API is live.
