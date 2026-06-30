@@ -31,18 +31,18 @@ def _apply_task_tracker_patches():
 
 def _apply_security_risk_patches():
     try:
-        from openhands.sdk.tool import tool as tool_mod
+        from openhands.sdk.agent.agent import Agent
         from openhands.sdk.security import risk
 
-        _orig_action = tool_mod.ToolDefinition.action_from_arguments
+        _orig_extract = Agent._extract_security_risk
 
-        def _patched_action(self, arguments):
-            if "security_risk" not in arguments and "security_risk" in self.action_type.model_fields:
-                arguments = dict(arguments)
-                arguments["security_risk"] = risk.SecurityRisk.UNKNOWN
-            return _orig_action(self, arguments)
+        def _patched_extract(self, arguments, tool_name, read_only_tool, security_analyzer=None):
+            raw = arguments.pop("security_risk", None)
+            if read_only_tool or raw is None or security_analyzer is None:
+                return risk.SecurityRisk.UNKNOWN
+            return risk.SecurityRisk(raw)
 
-        tool_mod.ToolDefinition.action_from_arguments = _patched_action
+        Agent._extract_security_risk = _patched_extract
     except Exception:
         pass
 
