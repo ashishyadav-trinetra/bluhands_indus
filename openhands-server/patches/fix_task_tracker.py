@@ -37,7 +37,7 @@ def _apply_security_risk_patches():
         _orig_action = tool_mod.ToolDefinition.action_from_arguments
 
         def _patched_action(self, arguments):
-            if "security_risk" not in arguments:
+            if "security_risk" not in arguments and "security_risk" in self.action_type.model_fields:
                 arguments = dict(arguments)
                 arguments["security_risk"] = risk.SecurityRisk.UNKNOWN
             return _orig_action(self, arguments)
