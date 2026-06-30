@@ -14,6 +14,7 @@ import jwt
 from fastapi import Request
 from pydantic import SecretStr
 
+from openhands.app_server.admin.user_assignment_service import get_assignment
 from openhands.app_server.integrations.provider import PROVIDER_TOKEN_TYPE
 from openhands.app_server.secrets.secrets_models import Secrets
 from openhands.app_server.secrets.secrets_store import SecretsStore
@@ -228,6 +229,25 @@ class SupabaseUserAuth(UserAuth):
                     await settings_store.store(settings)
                 except Exception:  # noqa: BLE001 - seeding is best-effort
                     pass
+        # BluHands admin assignment: if an active assignment exists, it overrides
+        # the user's model/repo settings entirely (locked).
+        # BluHands admin assignment: if an active assignment exists, it overrides
+        # the user's model/repo settings entirely (locked).
+        if self._user_id:
+            assignment = get_assignment(self._user_id)
+            if assignment and assignment.is_active:
+                llm_diff = {
+                    'agent_settings_diff': {
+                        'llm': {
+                            'model': assignment.model,
+                            'base_url': assignment.base_url,
+                            'api_key': assignment.api_key,
+                        }
+                    }
+                }
+                if settings is None:
+                    settings = Settings()
+                settings.update(llm_diff)
         self._settings = settings
         return settings
 

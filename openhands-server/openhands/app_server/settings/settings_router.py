@@ -29,6 +29,7 @@ from openhands.app_server.settings.settings_models import (
     Settings,
 )
 from openhands.app_server.settings.settings_store import SettingsStore
+from openhands.app_server.admin.user_assignment_service import get_assignment as _get_assignment
 from openhands.app_server.user_auth import (
     get_provider_tokens,
     get_secrets_store,
@@ -101,6 +102,7 @@ async def load_settings(
     settings_store: SettingsStore = Depends(get_user_settings_store),
     settings: Settings = Depends(get_user_settings),
     secrets_store: SecretsStore = Depends(get_secrets_store),
+    user_id: str | None = Depends(get_user_id),
 ) -> GETSettingsModel | JSONResponse:
     """Load user settings.
 
@@ -160,6 +162,12 @@ async def load_settings(
                     f'openhands/{resp_llm.model.removeprefix("litellm_proxy/")}'
                 )
 
+        # Check if user has an admin-enforced assignment
+        if user_id:
+            assignment = _get_assignment(user_id)
+            if assignment and assignment.is_active:
+                settings_with_token_data.assignment_locked = True
+
         # If the base url matches the default for the provider, we don't send it
         # So that the frontend can display basic mode.
         if is_openhands_model(llm.model):
@@ -200,6 +208,7 @@ async def load_settings(
 async def store_settings(
     payload: dict[str, Any],
     settings_store: SettingsStore = Depends(get_user_settings_store),
+    user_id: str | None = Depends(get_user_id),
 ) -> JSONResponse:
     """Store user settings.
 
@@ -223,6 +232,14 @@ async def store_settings(
                 'keys': legacy_nested_keys,
             },
         )
+
+    # Enforce admin assignment locks: prevent changes to LLM fields
+    if user_id:
+        assignment = _get_assignment(user_id)
+        if assignment and assignment.is_active:
+            agent_diff = payload.get('agent_settings_diff', {})
+            if 'llm' in agent_diff:
+                del payload['agent_settings_diff']['llm']
 
     try:
         existing_settings = await settings_store.load()

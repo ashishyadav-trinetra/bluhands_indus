@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from openhands.app_server.admin.admin_router import router as admin_router
 from openhands.app_server.app_conversation import app_conversation_router
 from openhands.app_server.config_api.config_router import router as config_router
 from openhands.app_server.event import event_router
@@ -22,6 +23,7 @@ from openhands.app_server.web_client import web_client_router
 
 # Include routers
 router = APIRouter(prefix='/api/v1')
+router.include_router(admin_router)
 router.include_router(event_router.router)
 router.include_router(app_conversation_router.router)
 router.include_router(pending_message_router)

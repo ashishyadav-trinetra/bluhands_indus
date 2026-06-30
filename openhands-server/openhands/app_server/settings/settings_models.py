@@ -389,6 +389,7 @@ class GETSettingsModel(Settings):
     )
     llm_api_key_set: bool
     search_api_key_set: bool = False
+    assignment_locked: bool = False  # True when an admin assignment locks the LLM
 
     model_config = ConfigDict(use_enum_values=True)
 
