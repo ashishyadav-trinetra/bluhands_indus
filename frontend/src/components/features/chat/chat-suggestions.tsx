@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Suggestions } from "#/components/features/suggestions/suggestions";
 import { useConversationStore } from "#/stores/conversation-store";
 import { useSettings } from "#/hooks/query/use-settings";
+import { useForgeMe } from "#/hooks/query/use-forge-me";
 
 const STARTER_SUGGESTIONS = [
   {
@@ -49,8 +50,14 @@ interface ChatSuggestionsProps {
 export function ChatSuggestions({ onSuggestionsClick }: ChatSuggestionsProps) {
   const { shouldHideSuggestions } = useConversationStore();
   const { data: settings } = useSettings();
+  const { data: forgeMe } = useForgeMe();
 
-  const userName = settings?.git_user_name || "there";
+  const userName =
+    forgeMe?.full_name ||
+    forgeMe?.display_name ||
+    forgeMe?.email?.split("@")[0] ||
+    settings?.git_user_name ||
+    "there";
   const firstName = userName.split(" ")[0];
 
   return (

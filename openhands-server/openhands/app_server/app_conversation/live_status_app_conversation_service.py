@@ -436,8 +436,11 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
 
             # Store info...
             user_id = await self.user_context.get_user_id()
-            # Use the first user message as the conversation title (truncated),
-            # falling back to the suggested task description, then a default.
+            # Extract a short smart title from the first user message
+            # (first few meaningful words), falling back to suggested task
+            # description, then a default.  The SDK's AutoTitleSubscriber
+            # runs inside the agent-server and overwrites this with an
+            # LLM-generated name when available.
             # Note: initial_message.content is list[TextContent | ImageContent], so
             # we join the text parts to get a plain string.
             def _extract_text(content) -> str | None:
@@ -461,9 +464,13 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
                     else None
                 )
             )
-            _title = (
-                (_first_msg[:60] + '…') if _first_msg and len(_first_msg) > 60 else _first_msg
-            ) or f'Conversation {info.id.hex[:5]}'
+            if _first_msg:
+                _words = [w for w in _first_msg.split() if w][:8]
+                _title = ' '.join(_words)
+                if len(_first_msg.split()) > 8:
+                    _title += '…'
+            else:
+                _title = f'Conversation {info.id.hex[:5]}'
 
             app_conversation_info = AppConversationInfo(
                 id=info.id,

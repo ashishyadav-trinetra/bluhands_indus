@@ -132,9 +132,9 @@ export function Sidebar() {
   const userName =
     forgeMe?.full_name ||
     forgeMe?.display_name ||
+    forgeMe?.email?.split("@")[0] ||
     settings?.git_user_name ||
     user.data?.login ||
-    forgeMe?.email?.split("@")[0] ||
     "User";
   const userInitials = userName
     .split(" ")

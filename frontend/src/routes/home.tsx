@@ -332,9 +332,9 @@ function HomeScreen() {
   const userName =
     forgeMe?.full_name ||
     forgeMe?.display_name ||
+    forgeMe?.email?.split("@")[0] ||
     settings?.git_user_name ||
     user.data?.login ||
-    forgeMe?.email?.split("@")[0] ||
     "there";
   const firstName = userName.split(" ")[0];
 
