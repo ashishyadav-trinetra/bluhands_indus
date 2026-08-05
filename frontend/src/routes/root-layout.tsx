@@ -13,7 +13,7 @@ import i18n from "#/i18n";
 import { useIsAuthed } from "#/hooks/query/use-is-authed";
 import { useConfig } from "#/hooks/query/use-config";
 import { Sidebar } from "#/components/features/sidebar/sidebar";
-import { supabase } from "#/lib/supabase";
+import { onAuthChange, restoreSession } from "#/lib/auth";
 import { ReauthModal } from "#/components/features/waitlist/reauth-modal";
 import { AnalyticsConsentFormModal } from "#/components/features/analytics/analytics-consent-form-modal";
 import { useSettings } from "#/hooks/query/use-settings";
@@ -88,9 +88,7 @@ export default function MainApp() {
   } = useIsAuthed();
 
   const [consentFormIsOpen, setConsentFormIsOpen] = React.useState(false);
-  const [supabaseChecked, setSupabaseChecked] = React.useState(
-    !import.meta.env.VITE_SUPABASE_URL,
-  );
+  const [sessionChecked, setSessionChecked] = React.useState(false);
 
   // Handle email-not-verified event dispatched by the axios interceptor.
   // Using an event keeps the interceptor free of router side-effects (testable).
@@ -104,26 +102,25 @@ export default function MainApp() {
     return () => window.removeEventListener("bluhands:email-unverified", onUnverified);
   }, []);
 
-  // Supabase auth guard: redirect to /login if not authenticated
+  // Auth guard: try to restore a session from the refresh cookie, and bounce to
+  // /login if there isn't one. onAuthChange also catches a sign-out or a refresh
+  // that fails later in the session.
   React.useEffect(() => {
-    if (!import.meta.env.VITE_SUPABASE_URL || !supabase) return undefined;
+    let cancelled = false;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/login", { replace: true });
-      }
-      setSupabaseChecked(true);
+    restoreSession().then((authed) => {
+      if (cancelled) return;
+      if (!authed) navigate("/login", { replace: true });
+      setSessionChecked(true);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") {
-        navigate("/login", { replace: true });
-      }
+    const unsubscribe = onAuthChange((authed) => {
+      if (!authed && !cancelled) navigate("/login", { replace: true });
     });
+
     return () => {
-      subscription.unsubscribe();
+      cancelled = true;
+      unsubscribe();
     };
   }, [navigate]);
 
@@ -247,7 +244,7 @@ export default function MainApp() {
   }, [isAuthed, checkLoginMethodExists]);
 
   // Show loading spinner while config or auth is loading
-  const isLoading = config.isLoading || isAuthLoading || !supabaseChecked;
+  const isLoading = config.isLoading || isAuthLoading || !sessionChecked;
 
   // Only decide to redirect AFTER loading completes
   const shouldRedirectToLogin =

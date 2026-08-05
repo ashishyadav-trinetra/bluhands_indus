@@ -13,8 +13,7 @@ from fastapi import Depends, Header, Path, Request
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.dependencies.providers import get_supabase_verifier, get_token_manager
-from app.api.v1.dependencies.services import get_auth_service
+from app.api.v1.dependencies.providers import get_token_manager
 from app.core.authz import is_allowed
 from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.core.security import RedisTokenBlocklist, TokenManager, TokenType
@@ -24,7 +23,6 @@ from app.db.repositories.membership_repository import MembershipRepository
 from app.db.repositories.user_repository import UserRepository
 from app.db.session import get_db_session
 from app.providers.redis_client import get_redis
-from app.services.auth_service import AuthService
 
 
 def _extract_bearer(authorization: str | None) -> str:
@@ -43,27 +41,20 @@ async def get_current_user(
     token_manager: TokenManager = Depends(get_token_manager),
     redis: Redis = Depends(get_redis),
     session: AsyncSession = Depends(get_db_session),
-    supabase_verifier=Depends(get_supabase_verifier),
-    auth_service: AuthService = Depends(get_auth_service),
 ) -> User:
     """Resolve and return the authenticated user from the access token.
 
-    Accepts EITHER a control-plane RS256 token (machine/admin) OR a Supabase
-    access token (platform login, ADR-13). The RS256 path is tried first; if the
-    token isn't one of ours, we fall back to Supabase verification + JIT user
-    provisioning. Stashes the RS256 token ``jti``/``exp`` on ``request.state`` so
-    logout can revoke the exact token in use.
+    Every caller — password login, Google sign-in, machine, admin — presents the
+    same control-plane RS256 access token; social logins are exchanged for one at
+    the OAuth callback. Stashes the token's ``jti``/``exp`` on ``request.state``
+    so logout can revoke the exact token in use.
 
     Raises:
         AuthenticationError: if the token is missing, invalid, revoked, or the
             user does not exist / is inactive.
     """
     token = _extract_bearer(authorization)
-    try:
-        payload = token_manager.decode(token, expected_type=TokenType.ACCESS)
-    except AuthenticationError:
-        # Not a control-plane token — try the Supabase platform login.
-        return await _resolve_supabase_user(token, request, supabase_verifier, auth_service)
+    payload = token_manager.decode(token, expected_type=TokenType.ACCESS)
 
     blocklist = RedisTokenBlocklist(redis)
     if await blocklist.is_blocked(payload["jti"]):
@@ -75,31 +66,6 @@ async def get_current_user(
 
     request.state.access_jti = payload["jti"]
     request.state.access_exp = int(payload["exp"])
-    return user
-
-
-async def _resolve_supabase_user(
-    token: str,
-    request: Request,
-    verifier,
-    auth_service: AuthService,
-) -> User:
-    """Verify a Supabase token and load-or-provision the matching platform user."""
-    if verifier is None:
-        raise AuthenticationError("Invalid or expired token")
-    claims = await verifier.verify(token)
-    email = claims.get("email")
-    if not email:
-        raise AuthenticationError("Supabase token is missing an email claim")
-    full_name = (claims.get("user_metadata") or {}).get("full_name")
-    user = await auth_service.provision_from_supabase(
-        external_id=claims.get("sub"),
-        email=email,
-        full_name=full_name,
-    )
-    if not user.is_active:
-        raise AuthenticationError("User is no longer active")
-    request.state.auth_via = "supabase"
     return user
 
 

@@ -327,7 +327,7 @@ function HomeScreen() {
 
   const uiBusy = isPending || checking;
 
-  // Prefer the authenticated user's real identity (forge/Supabase) over the
+  // Prefer the authenticated user's real identity (forge) over the
   // per-user OpenHands git name, which is empty for fresh users.
   const userName =
     forgeMe?.full_name ||

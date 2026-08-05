@@ -651,28 +651,26 @@ export function Sidebar() {
             <div className="flex-1 min-w-0">
               <p className="text-xs text-white truncate">{userName}</p>
             </div>
-            {import.meta.env.VITE_SUPABASE_URL && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const { supabase } = await import("#/lib/supabase");
-                  await supabase?.auth.signOut();
-                  window.location.href = "/login";
-                }}
-                className="opacity-0 group-hover:opacity-100 text-[#666] hover:text-red-400 transition-all"
-                title="Sign out"
+            <button
+              type="button"
+              onClick={async () => {
+                const { logout } = await import("#/lib/auth");
+                await logout();
+                window.location.href = "/login";
+              }}
+              className="opacity-0 group-hover:opacity-100 text-[#666] hover:text-red-400 transition-all"
+              title="Sign out"
+            >
+              <svg
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path d="M5 1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2M8 10l3-3-3-3M4 7h7" />
-                </svg>
-              </button>
-            )}
+                <path d="M5 1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2M8 10l3-3-3-3M4 7h7" />
+              </svg>
+            </button>
           </div>
         </div>
       </aside>

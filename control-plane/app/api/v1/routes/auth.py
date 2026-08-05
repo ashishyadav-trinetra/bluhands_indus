@@ -11,9 +11,11 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies.auth import get_current_user
+from app.api.v1.dependencies.providers import get_rate_limiter
 from app.api.v1.dependencies.services import get_auth_service
 from app.core.config import Settings, get_settings
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, RateLimitError
+from app.core.rate_limit import RateLimiter
 from app.db.models.user import User
 from app.db.repositories.membership_repository import MembershipRepository
 from app.db.session import get_db_session
@@ -46,6 +48,31 @@ def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "unknown")
 
 
+async def throttle_credentials(
+    request: Request,
+    limiter: RateLimiter = Depends(get_rate_limiter),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """Throttle credential submissions per client IP (brute-force defense).
+
+    Keyed by IP rather than email so an attacker cannot spread guesses across
+    many accounts, and cannot lock a victim out by exhausting *their* bucket.
+
+    Raises:
+        RateLimitError: 429 with a Retry-After hint.
+    """
+    result = await limiter.hit(
+        f"auth:{_client_ip(request) or 'unknown'}",
+        limit=settings.auth_rate_limit_per_ip,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+    )
+    if not result.allowed:
+        raise RateLimitError(
+            "Too many attempts. Please try again shortly.",
+            retry_after=result.retry_after,
+        )
+
+
 def _set_refresh_cookie(response: Response, tokens: IssuedTokens, settings: Settings) -> None:
     """Attach the refresh token as a hardened HttpOnly cookie."""
     response.set_cookie(
@@ -70,6 +97,7 @@ def _token_envelope(request: Request, tokens: IssuedTokens) -> SuccessResponse[T
     "/register",
     status_code=status.HTTP_201_CREATED,
     response_model=SuccessResponse[TokenResponse],
+    dependencies=[Depends(throttle_credentials)],
 )
 async def register(
     payload: RegisterRequest,
@@ -85,7 +113,11 @@ async def register(
     return _token_envelope(request, tokens)
 
 
-@router.post("/login", response_model=SuccessResponse[TokenResponse])
+@router.post(
+    "/login",
+    response_model=SuccessResponse[TokenResponse],
+    dependencies=[Depends(throttle_credentials)],
+)
 async def login(
     payload: LoginRequest,
     request: Request,

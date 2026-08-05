@@ -3,13 +3,13 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from "axios";
-import { getAccessToken } from "#/lib/supabase";
+import { getAccessToken } from "#/lib/auth";
 
 export const openHands = axios.create({
   baseURL: `${window.location.protocol}//${import.meta.env.VITE_BACKEND_BASE_URL || window?.location.host}`,
 });
 
-// Inject Supabase access token into all API requests
+// Inject the control-plane access token into all API requests.
 openHands.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {
@@ -18,8 +18,8 @@ openHands.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch {
-      // No Supabase session available — request proceeds unauthenticated.
-      // The server will return 401 which is handled by the response interceptor.
+      // No session available — request proceeds unauthenticated. The server
+      // returns 401, which the response interceptor below handles.
     }
     return config;
   },
