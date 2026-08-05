@@ -67,10 +67,10 @@ services:
       #   BLUHANDS_SELFHOSTED_DOMAINS=trinetralabs.ai
       #   BLUHANDS_SELFHOSTED_BASE_URL=http://<dgx-ip>:<port>/v1
       #   BLUHANDS_SELFHOSTED_MODEL=openai/<served-model-name>   (LiteLLM slug)
-      BLUHANDS_SELFHOSTED_DOMAINS: "${BLUHANDS_SELFHOSTED_DOMAINS:-}"
-      BLUHANDS_SELFHOSTED_BASE_URL: "${BLUHANDS_SELFHOSTED_BASE_URL:-}"
-      BLUHANDS_SELFHOSTED_MODEL: "${BLUHANDS_SELFHOSTED_MODEL:-}"
-      BLUHANDS_SELFHOSTED_API_KEY: "${BLUHANDS_SELFHOSTED_API_KEY:-sk-local}"
+      BLUHANDS_SELFHOSTED_DOMAINS: "${BLUHANDS_SELFHOSTED_DOMAINS:-trinetralabs.ai}"
+      BLUHANDS_SELFHOSTED_BASE_URL: "${BLUHANDS_SELFHOSTED_BASE_URL:-http://172.16.16.40:11434/v1}"
+      BLUHANDS_SELFHOSTED_MODEL: "${BLUHANDS_SELFHOSTED_MODEL:-openai/qwen3.6:latest}"
+      BLUHANDS_SELFHOSTED_API_KEY: "${BLUHANDS_SELFHOSTED_API_KEY:-ollama}"
       # LLM is configured per-user via the UI Settings page (settings store).
       # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
@@ -86,7 +86,7 @@ services:
     extra_hosts:
       - "host.docker.internal:127.0.0.1"
     ports:
-      - "3000:3000"
+      - "3010:3000"
       # Per-conversation agent-servers listen on 18000+. Publish a range so the
       # HOST nginx can reverse-proxy /runtime/{port}/ to them. (They must bind
       # 0.0.0.0 inside the container for this to work — verify; see notes.)
@@ -123,6 +123,10 @@ services:
       AGENT_MAX_CONCURRENT_BUILDS: "${AGENT_MAX_CONCURRENT_BUILDS:-4}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       E2B_API_KEY: "${E2B_API_KEY:-}"
+      AGENT_CUSTOM_MODEL_ENABLED: "${AGENT_CUSTOM_MODEL_ENABLED:-true}"
+      AGENT_CUSTOM_MODEL_BASE_URL: "${AGENT_CUSTOM_MODEL_BASE_URL:-http://172.16.16.40:11434/v1}"
+      AGENT_CUSTOM_MODEL_API_KEY: "${AGENT_CUSTOM_MODEL_API_KEY:-ollama}"
+      AGENT_LLM_MODEL: "${AGENT_LLM_MODEL:-openai/qwen3.6:latest}"
       # Persistence: workspace survives agent restarts (named volume below).
       AGENT_WORKSPACE_ROOT: "/var/bluhands-builds"
       # Base URL of the reverse proxy that exposes sandbox ports to users.
@@ -162,7 +166,7 @@ services:
       # Runtime env vars (for anything not Vite-baked).
       VITE_MOCK_API: "false"
     ports:
-      - "3300:3000"
+      - "3000:3000"
     depends_on:
       api:
         condition: service_healthy

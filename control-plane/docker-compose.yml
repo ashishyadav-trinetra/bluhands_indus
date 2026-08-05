@@ -28,6 +28,7 @@ services:
       - ./app:/app/app
       - ./migrations:/app/migrations
       - ./secrets:/app/secrets:ro
+      - ./tests:/app/tests:ro
     ports:
       # Host 8001 to avoid clashing with another service on 8000. Internal
       # services + nginx still reach it as api:8000 on the compose network.

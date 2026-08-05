@@ -137,7 +137,9 @@ class Settings(BaseSettings):
     # Placeholders — set the real values via env (FORGE_MODEL_TESTER / FORGE_MODEL_SELF).
     model_default: str = "openrouter/anthropic/claude-sonnet-4.5"
     model_tester: str = "openrouter/minimax/minimax-01"  # tester role: one fixed model
-    model_self: str = "openrouter/qwen/qwen-3.6"  # internal staff: self-hosted Qwen
+    model_self: str = "openai/qwen3.6:latest"  # internal staff: self-hosted Qwen
+    selfhosted_domains: str = "trinetralabs.ai"
+
 
     # --- GitHub integration (via Nango) ---
     # The Nango provider_config_key for GitHub (must match your Nango dashboard).

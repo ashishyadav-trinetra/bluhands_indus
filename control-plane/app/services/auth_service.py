@@ -53,6 +53,7 @@ class AuthService:
         blocklist,  # TokenBlocklist (Protocol) — injected
         free_credits_on_signup: int,
         access_ttl_seconds: int,
+        selfhosted_domains: str = "",
     ) -> None:
         self._users = users
         self._orgs = organizations
@@ -64,6 +65,18 @@ class AuthService:
         self._blocklist = blocklist
         self._free_credits = free_credits_on_signup
         self._access_ttl = access_ttl_seconds
+        self._selfhosted_domains = selfhosted_domains
+
+    def _resolve_platform_role(self, email: str) -> str:
+        from app.db.models.enums import PlatformRole
+
+        if not self._selfhosted_domains:
+            return PlatformRole.USER.value
+        domain = email.split("@")[-1].strip().lower()
+        allowed = {d.strip().lower() for d in self._selfhosted_domains.split(",") if d.strip()}
+        if domain in allowed:
+            return PlatformRole.SELF.value
+        return PlatformRole.USER.value
 
     # --- Registration ------------------------------------------------------
 
@@ -86,6 +99,7 @@ class AuthService:
             password_hash=self._passwords.hash(data.password),
             is_active=True,
             is_platform_admin=False,
+            platform_role=self._resolve_platform_role(email),
         )
         await self._users.add(user)
 
@@ -161,6 +175,7 @@ class AuthService:
             external_id=external_id,
             is_active=True,
             is_platform_admin=False,
+            platform_role=self._resolve_platform_role(email),
         )
         await self._users.add(user)
         await self._provision_org(

@@ -162,6 +162,7 @@ def auth_components(token_manager: TokenManager, settings: Settings):
         blocklist=blocklist,
         free_credits_on_signup=settings.free_credits_on_signup,
         access_ttl_seconds=settings.access_token_ttl_seconds,
+        selfhosted_domains=settings.selfhosted_domains,
     )
     return {
         "service": service,
