@@ -12,6 +12,7 @@ import { useConfig } from "#/hooks/query/use-config";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { I18nKey } from "#/i18n/declaration";
 import { cn } from "#/utils/utils";
+import { isSettingsPageHidden } from "#/utils/settings-utils";
 import { usePaginatedConversations } from "#/hooks/query/use-paginated-conversations";
 import { useStartTasks } from "#/hooks/query/use-start-tasks";
 import { useInfiniteScroll } from "#/hooks/use-infinite-scroll";
@@ -52,6 +53,11 @@ export function Sidebar() {
     isError: settingsIsError,
     isFetching: isFetchingSettings,
   } = useSettings();
+
+  const featureFlags = config?.feature_flags;
+  const userEmail = forgeMe?.user?.email || settings?.email;
+  const isReady = !!userEmail;
+  const showSettings = isReady && !isSettingsPageHidden("/settings", featureFlags, userEmail);
 
   const [settingsModalIsOpen, setSettingsModalIsOpen] = React.useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useLocalStorage(
@@ -608,8 +614,9 @@ export function Sidebar() {
           )}
 
           {/* Settings */}
-          <NavLink
-            to="/settings"
+          {showSettings && (
+            <NavLink
+              to="/settings"
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 mb-1 transition-colors",
@@ -630,8 +637,9 @@ export function Sidebar() {
               <circle cx="8" cy="8" r="3" />
               <path d="M8 1v2M8 13v2M1 8h2M13 8h2M2.9 2.9l1.4 1.4M11.7 11.7l1.4 1.4M2.9 13.1l1.4-1.4M11.7 4.3l1.4-1.4" />
             </svg>
-            <span className="text-xs">Settings</span>
-          </NavLink>
+              <span className="text-xs">Settings</span>
+            </NavLink>
+          )}
 
           {/* User profile + logout */}
           <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 group">

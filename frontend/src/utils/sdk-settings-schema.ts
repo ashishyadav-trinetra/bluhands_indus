@@ -30,8 +30,9 @@ const VIEW_PROMINENCES: Record<SettingsView, Set<SettingProminence>> = {
   all: new Set<SettingProminence>(["critical", "major", "minor"]),
 };
 
-function getSchemaFields(schema: SettingsSchema): SettingsFieldSchema[] {
-  return schema.sections.flatMap((section) => section.fields);
+function getSchemaFields(schema: SettingsSchema | null | undefined): SettingsFieldSchema[] {
+  if (!schema?.sections) return [];
+  return schema.sections.flatMap((section) => section?.fields ?? []);
 }
 
 /** Traverse a nested object using a dotted key path (e.g. "llm.model"). */
@@ -95,7 +96,7 @@ export function getConversationSettingValue(
 }
 
 function isChoiceField(field: SettingsFieldSchema): boolean {
-  return field.choices.length > 0;
+  return (field?.choices?.length ?? 0) > 0;
 }
 
 function isCriticalField(field: SettingsFieldSchema): boolean {
@@ -289,6 +290,7 @@ export function isSettingsFieldVisible(
   field: SettingsFieldSchema,
   values: SettingsFormValues,
 ): boolean {
+  if (!field?.depends_on || field.depends_on.length === 0) return true;
   return field.depends_on.every((dependency) => values[dependency] === true);
 }
 
@@ -429,22 +431,24 @@ export function buildSdkSettingsPayloadForView(
 /** Return sections with fields filtered for the current view tier.
  *  Specially-rendered fields are excluded from the generic list. */
 export function getVisibleSettingsSections(
-  schema: SettingsSchema,
+  schema: SettingsSchema | null | undefined,
   values: SettingsFormValues,
   view: SettingsView,
   excludeKeys: Set<string> = SPECIALLY_RENDERED_KEYS,
 ): SettingsSectionSchema[] {
+  if (!schema?.sections) return [];
   return schema.sections
     .map((section) => ({
       ...section,
-      fields: section.fields.filter(
+      fields: (section?.fields ?? []).filter(
         (field) =>
+          field &&
           !excludeKeys.has(field.key) &&
           isFieldVisibleInView(field, view) &&
           isSettingsFieldVisible(field, values),
       ),
     }))
-    .filter((section) => section.fields.length > 0);
+    .filter((section) => (section.fields?.length ?? 0) > 0);
 }
 
 /** Whether the schema has any fields visible in the "advanced" tier. */

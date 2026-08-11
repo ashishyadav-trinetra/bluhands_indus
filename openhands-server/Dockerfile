@@ -20,6 +20,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git curl \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
+ && npm install -g pnpm \
+ && rm -f /usr/bin/npm /usr/bin/npx \
+ && ln -s $(which pnpm) /usr/bin/npm \
+ && ln -s $(which pnpm) /usr/bin/npx \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv

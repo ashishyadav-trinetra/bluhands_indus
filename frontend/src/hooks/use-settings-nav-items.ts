@@ -9,9 +9,13 @@ import { OrganizationUserRole } from "#/types/org";
 import { isBillingHidden } from "#/utils/org/billing-visibility";
 import { isSettingsPageHidden } from "#/utils/settings-utils";
 import { useMe } from "./query/use-me";
+import { useSettings } from "./query/use-settings";
+import { useForgeMe } from "./query/use-forge-me";
 import { usePermission } from "./organizations/use-permissions";
 import { useOrgTypeAndAccess } from "./use-org-type-and-access";
 import { I18nKey } from "#/i18n/declaration";
+
+import { getUserEmailFromToken } from "#/lib/auth";
 
 // Rendered navigation item types
 export type SettingsNavRenderedItem =
@@ -34,8 +38,14 @@ const SECTION_HEADERS: Partial<Record<SettingsNavSection, I18nKey>> = {
  * @returns Settings Nav Rendered Items (items, headers, dividers)
  */
 export function useSettingsNavItems(): SettingsNavRenderedItem[] {
-  const { data: config } = useConfig();
-  const { data: user } = useMe();
+  const { data: config, isLoading: isConfigLoading } = useConfig();
+  const { data: user, isLoading: isUserLoading } = useMe();
+  const { data: settings } = useSettings();
+
+  if (isConfigLoading || !config || isUserLoading) {
+    return [];
+  }
+
   const userRole: OrganizationUserRole = user?.role ?? "member";
   const { hasPermission } = usePermission(userRole);
   const { isPersonalOrg, isTeamOrg, organizationId } = useOrgTypeAndAccess();
@@ -47,11 +57,19 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   const isSaasMode = config?.app_mode === "saas";
   const featureFlags = config?.feature_flags;
   const isAdminOrOwner = userRole === "admin" || userRole === "owner";
+  
+  const { data: forgeMe } = useForgeMe();
+  const userEmail = forgeMe?.user?.email || getUserEmailFromToken() || settings?.email;
+  const isReady = !!userEmail;
+
+  if (!isReady && isSaasMode) {
+    return [];
+  }
 
   let items = isSaasMode ? [...SAAS_NAV_ITEMS] : [...OSS_NAV_ITEMS];
 
   // First apply feature flag-based hiding
-  items = items.filter((item) => !isSettingsPageHidden(item.to, featureFlags));
+  items = items.filter((item) => !isSettingsPageHidden(item.to, featureFlags, userEmail));
 
   // Hide billing when billing is not accessible OR when in team org
   if (shouldHideBilling || isTeamOrg) {

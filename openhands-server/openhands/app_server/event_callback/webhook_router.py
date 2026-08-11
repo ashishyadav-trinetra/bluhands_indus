@@ -226,6 +226,7 @@ async def valid_conversation(
         sandbox_info.created_by_user_id is not None
         and app_conversation_info.created_by_user_id != sandbox_info.created_by_user_id
     ):
+        _logger.error(f"AuthError! sandbox_uid={sandbox_info.created_by_user_id!r} type={type(sandbox_info.created_by_user_id)} app_uid={app_conversation_info.created_by_user_id!r} type={type(app_conversation_info.created_by_user_id)}")
         raise AuthError()
 
     return app_conversation_info

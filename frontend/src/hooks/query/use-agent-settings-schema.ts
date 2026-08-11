@@ -4,31 +4,35 @@ import { useIsOnIntermediatePage } from "#/hooks/use-is-on-intermediate-page";
 import { SettingsSchema } from "#/types/settings";
 import { useIsAuthed } from "./use-is-authed";
 
+const hasValidSections = (s?: SettingsSchema | null) =>
+  Boolean(s && Array.isArray(s.sections) && s.sections.length > 0);
+
 const useSettingsSchema = (
   type: "agent" | "conversation",
   fallbackSchema?: SettingsSchema | null,
 ) => {
   const isOnIntermediatePage = useIsOnIntermediatePage();
-  const { data: userIsAuthenticated } = useIsAuthed();
+  const validFallback = hasValidSections(fallbackSchema) ? fallbackSchema : null;
+
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["settings-schema", type],
     queryFn:
       type === "conversation"
         ? SettingsService.getConversationSettingsSchema
         : SettingsService.getSettingsSchema,
-    retry: false,
+    retry: 2,
     refetchOnWindowFocus: false,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
     gcTime: 1000 * 60 * 15,
-    enabled: !fallbackSchema && !isOnIntermediatePage && !!userIsAuthenticated,
+    enabled: !validFallback && !isOnIntermediatePage,
     meta: {
       disableToast: true,
     },
   });
 
-  if (fallbackSchema) {
+  if (validFallback) {
     return {
-      data: fallbackSchema,
+      data: validFallback,
       isLoading: false,
       isFetching: false,
     };

@@ -159,10 +159,10 @@ class OpenHandsRunner:
             if not await self._clone_repo(spec, session):
                 return BuildOutcome(success=False, error="git clone failed")
             if await self._file_exists(session, f"{workdir}/package.json"):
-                self._log("  npm install in sandbox…")
-                inst = await session.run("npm install", cwd=workdir, timeout=600)
+                self._log("  pnpm install in sandbox…")
+                inst = await session.run("pnpm i", cwd=workdir, timeout=600)
                 if not inst.ok:
-                    self._log(f"  npm install failed (non-fatal): {inst.stderr[-300:]}")
+                    self._log(f"  pnpm install failed (non-fatal): {inst.stderr[-300:]}")
         else:
             # 1. Seed products (local HTTP call to Medusa — not in sandbox).
             self._log("step 1/6 — seeding products into Medusa…")
@@ -221,13 +221,33 @@ class OpenHandsRunner:
                     await session.upload_dir(str(tmp_path))
 
                 # 3.5 npm install inside the sandbox (starter assumed npm-based).
-                self._log("step 3.5 — npm install in sandbox…")
-                res = await session.run("npm install", cwd=workdir, timeout=600)
+                self._log("step 3.5 — pnpm install in sandbox…")
+                res = await session.run("pnpm i", cwd=workdir, timeout=600)
                 if not res.ok:
-                    self._log(f"  npm install failed: {res.stderr[-400:]}")
-                    return BuildOutcome(success=False, error="npm install failed")
+                    self._log(f"  pnpm install failed: {res.stderr[-400:]}")
+                    return BuildOutcome(success=False, error="pnpm install failed")
             else:
-                self._log("step 2/6 — no starter; agent will scaffold from scratch…")
+                self._log("step 2/6 — no starter; pre-scaffolding Next.js with pnpm…")
+                # Auto-scaffold with pnpm to prevent the AI from fumbling with npm
+                res = await session.run(
+                    "pnpm create next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias '@/*' --use-pnpm --yes",
+                    cwd=workdir,
+                    timeout=300,
+                )
+                if not res.ok:
+                    self._log(f"  pnpm scaffold failed: {res.stderr[-400:]}")
+
+            # 3.9 Enforce Strict pnpm Policy (Option 4)
+            # Before the AI wakes up, we physically destroy the npm and npx binaries
+            # inside its sandbox and replace them with symlinks to pnpm.
+            # This makes it impossible for the AI to use npm, even if it ignores the prompt.
+            await session.run(
+                'rm -f $(which npm) $(which npx) && '
+                'ln -s $(which pnpm) /usr/local/bin/npm && '
+                'ln -s $(which pnpm) /usr/local/bin/npx',
+                cwd=workdir,
+                timeout=30,
+            )
 
             # 4. OpenHands builds the app — main act, not optional.
             self._log("step 4/6 — OpenHands building the app…")
@@ -244,8 +264,8 @@ class OpenHandsRunner:
         # Commands come from the manifest so any stack works, not just Next.js.
         _manifest = spec.manifest or {}
         preview_port = spec.preview_port or int(_manifest.get("defaultPort", 3000))
-        build_cmd = _manifest.get("buildCmd", "npm run build")
-        serve_cmd = _manifest.get("serveCmd", f"npm run start -- -p {preview_port} -H 0.0.0.0")
+        build_cmd = _manifest.get("buildCmd", "pnpm run build")
+        serve_cmd = _manifest.get("serveCmd", f"pnpm run start -- -p {preview_port} -H 0.0.0.0")
         build_timeout = int(_manifest.get("buildTimeout", 900))
 
         self._log(f"step 5/6 — build ({build_cmd}) + serve in sandbox…")
@@ -399,7 +419,8 @@ class OpenHandsRunner:
             if sandbox_id and not sandbox_id.startswith("local-"):
                 conv_kwargs["sandbox_type"] = "e2b"
                 conv_kwargs["sandbox_id"] = sandbox_id
-            conversation = Conversation(agent=agent, **conv_kwargs)
+            # Hard stop at 15 iterations to prevent runaway token burning
+            conversation = Conversation(agent=agent, max_iterations=15, **conv_kwargs)
             conversation.send_message(prompt)
             conversation.run()
             return (True, "agent run completed")

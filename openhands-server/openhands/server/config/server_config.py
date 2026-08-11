@@ -33,8 +33,8 @@ class ServerConfig(ServerConfigInterface):
     )
     user_auth_class: str = (
         'openhands.app_server.user_auth.supabase_user_auth.SupabaseUserAuth'
-        if os.environ.get('SUPABASE_URL')
-        else 'openhands.app_server.user_auth.default_user_auth.DefaultUserAuth'
+        # if os.environ.get('SUPABASE_URL')
+        # else 'openhands.app_server.user_auth.default_user_auth.DefaultUserAuth'
     )
     enable_v1: bool = os.getenv('ENABLE_V1') != '0'
 

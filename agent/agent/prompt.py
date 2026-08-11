@@ -48,7 +48,7 @@ _ECOMMERCE_BASE = (
     "merchant's store name everywhere (title, header) — never leave it as "
     "'Storefront'.\n"
     "4. Never hardcode or mock product data — always fetch from the Medusa API.\n"
-    "5. Verify your work: run `npm run build` and fix any errors until it builds "
+    "5. Verify your work: run `pnpm run build` and fix any errors until it builds "
     "clean. Keep iterating until the store is complete and the build passes.\n"
     "Edit the starter's components and design tokens; reuse its primitives rather "
     "than reinventing them."

@@ -13,6 +13,7 @@ import { HelpLink } from "#/ui/help-link";
 import { PRODUCT_URL } from "#/utils/constants";
 import { useSearchProviders } from "#/hooks/query/use-search-providers";
 import { useProviderModels } from "#/hooks/query/use-provider-models";
+import { useForgeMe } from "#/hooks/query/use-forge-me";
 
 interface ModelSelectorProps {
   isDisabled?: boolean;
@@ -56,13 +57,16 @@ export function ModelSelector({
     [providers],
   );
 
+  const { data: forgeMe } = useForgeMe();
+  const isTrinetra = !!forgeMe?.email?.toLowerCase().endsWith("@trinetralabs.ai");
+
   const verifiedModels = React.useMemo(
-    () => providerModels.filter((m) => m.verified),
-    [providerModels],
+    () => providerModels.filter((m) => m.verified && (isTrinetra || !m.name.includes("qwen3.6"))),
+    [providerModels, isTrinetra],
   );
   const unverifiedModels = React.useMemo(
-    () => providerModels.filter((m) => !m.verified),
-    [providerModels],
+    () => providerModels.filter((m) => !m.verified && (isTrinetra || !m.name.includes("qwen3.6"))),
+    [providerModels, isTrinetra],
   );
 
   React.useEffect(() => {

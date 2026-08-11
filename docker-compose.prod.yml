@@ -35,7 +35,7 @@ services:
       SERVE_FRONTEND: "false"           # the `frontend` service serves the UI
       RUNTIME: "process"                # in-container process sandbox for convos
       CORS_ALLOWED_ORIGINS: "*"
-      SANDBOX_CONTAINER_URL_PATTERN: "http://localhost:{port}"
+      SANDBOX_CONTAINER_URL_PATTERN: "https://app.bluehands.ai/runtime/{port}"
       # ── Multi-tenant identity (per-user isolation) ───────────────────────────
       # Setting SUPABASE_URL is the MASTER SWITCH: server_config.py then selects
       # SupabaseUserAuth (real per-user id from the JWT) + per-user Supabase

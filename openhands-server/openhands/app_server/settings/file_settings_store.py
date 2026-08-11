@@ -14,7 +14,13 @@ from openhands.core.config.openhands_config import OpenHandsConfig
 @dataclass
 class FileSettingsStore(SettingsStore):
     file_store: FileStore
-    path: str = 'settings.json'
+    user_id: str = 'default'
+
+    @property
+    def path(self) -> str:
+        # Sanitize user_id just in case, though it's usually a UUID or email
+        safe_id = "".join(c for c in self.user_id if c.isalnum() or c in ".-_")
+        return f'settings_{safe_id}.json'
 
     async def load(self) -> Settings | None:
         try:
@@ -44,4 +50,4 @@ class FileSettingsStore(SettingsStore):
             file_store_type=config.file_store,
             file_store_path=config.file_store_path,
         )
-        return FileSettingsStore(file_store)
+        return FileSettingsStore(file_store, user_id=user_id or 'default')

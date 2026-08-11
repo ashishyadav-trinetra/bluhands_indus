@@ -10,6 +10,7 @@ import {
   startGoogleLogin,
 } from "#/lib/auth";
 import { cn } from "#/utils/utils";
+import { queryClient } from "#/query-client-config";
 
 type AuthMode = "login" | "signup";
 
@@ -63,6 +64,7 @@ export function BluHandsLogin() {
       } else {
         await login(email, password);
       }
+      queryClient.clear();
       navigate("/", { replace: true });
     } catch (err: unknown) {
       setError(

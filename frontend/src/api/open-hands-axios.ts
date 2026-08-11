@@ -6,7 +6,12 @@ import axios, {
 import { getAccessToken } from "#/lib/auth";
 
 export const openHands = axios.create({
-  baseURL: `${window.location.protocol}//${import.meta.env.VITE_BACKEND_BASE_URL || window?.location.host}`,
+  baseURL:
+    import.meta.env.VITE_API_BASE_URL ||
+    (import.meta.env.VITE_BACKEND_BASE_URL
+      ? `${window.location.protocol}//${import.meta.env.VITE_BACKEND_BASE_URL}`
+      : "http://localhost:8080"),
+  withCredentials: true,
 });
 
 // Inject the control-plane access token into all API requests.

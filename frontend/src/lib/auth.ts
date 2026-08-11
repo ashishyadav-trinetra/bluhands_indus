@@ -180,3 +180,23 @@ export function startGoogleLogin(): void {
 /** True when this deployment has Google sign-in configured. */
 export const googleLoginEnabled =
   import.meta.env.VITE_GOOGLE_LOGIN_ENABLED === "true";
+
+/** Extract the user's email directly from the in-memory access token JWT payload. */
+export function getUserEmailFromToken(): string | null {
+  if (!accessToken) return null;
+  try {
+    const base64Url = accessToken.split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(""),
+    );
+    const payload = JSON.parse(jsonPayload);
+    return payload.email || payload.user_metadata?.email || null;
+  } catch {
+    return null;
+  }
+}

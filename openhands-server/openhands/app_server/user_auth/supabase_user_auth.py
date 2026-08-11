@@ -67,6 +67,24 @@ def _decode_supabase_token(token: str) -> dict | None:
                 options={'verify_exp': True},
             )
 
+        if alg == 'RS256':
+            forge_key_path = os.getenv('FORGE_JWT_PUBLIC_KEY_PATH')
+            if forge_key_path:
+                try:
+                    with open(forge_key_path, 'r') as f:
+                        public_key = f.read()
+                    return jwt.decode(
+                        token,
+                        public_key,
+                        algorithms=['RS256'],
+                        audience='forge-clients',
+                        issuer='forge',
+                        options={'verify_exp': True},
+                    )
+                except Exception as e:
+                    _logger.warning(f'Failed to verify Forge JWT: {e}')
+                    return None
+
         # Asymmetric (ES256 / RS256) → verify against the project's JWKS.
         jwks_url = os.getenv('SUPABASE_JWKS_URL')
         if not jwks_url:
@@ -204,9 +222,11 @@ class SupabaseUserAuth(UserAuth):
     async def get_user_settings(self) -> Settings | None:
         settings = self._settings
         if settings:
+            settings.email = self._user_email
             return settings
         settings_store = await self.get_user_settings_store()
         settings = await settings_store.load()
+            
         # BluHands: platform admins build on the company model+key. Seed it
         # whenever they have NO LLM key yet — not just when settings are absent
         # (a settings row exists after the analytics-consent save, but with no
@@ -215,12 +235,13 @@ class SupabaseUserAuth(UserAuth):
             getattr(settings, 'llm_api_key_is_set', False)
         )
         if not has_key:
-            # Precedence: domain-matched users (including admins) get the
-            # self-hosted model first. Admins without a domain match fall back
-            # to the OpenRouter paid model. Users who are neither get nothing.
-            diff = _selfhosted_llm_diff(self._user_email)
-            if diff is None and _is_platform_admin(self._user_email):
+            # Precedence: platform admins get the OpenRouter paid model so they
+            # can build with the best model. Non-admin domain-matched users get
+            # the self-hosted model (Qwen). Users who are neither get nothing.
+            if _is_platform_admin(self._user_email):
                 diff = _platform_llm_diff()
+            else:
+                diff = _selfhosted_llm_diff(self._user_email)
             if diff is not None:
                 if settings is None:
                     settings = Settings()
@@ -248,6 +269,11 @@ class SupabaseUserAuth(UserAuth):
                 if settings is None:
                     settings = Settings()
                 settings.update(llm_diff)
+        if settings is None:
+            settings = Settings()
+        
+        settings.email = self._user_email
+            
         self._settings = settings
         return settings
 

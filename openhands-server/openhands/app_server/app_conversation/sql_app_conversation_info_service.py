@@ -584,7 +584,7 @@ class SQLAppConversationInfoService(AppConversationInfoService):
 
         return AppConversationInfo(
             id=UUID(stored.conversation_id),
-            created_by_user_id=None,  # User ID is now stored in ConversationMetadataSaas
+            created_by_user_id=stored.user_id,
             sandbox_id=sandbox_id,  # Use the asserted non-None value
             selected_repository=stored.selected_repository,
             selected_branch=stored.selected_branch,

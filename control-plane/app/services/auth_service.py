@@ -267,7 +267,10 @@ class AuthService:
 
     def issue_tokens(self, user: User) -> IssuedTokens:
         """Mint a fresh access + refresh token pair for ``user``."""
-        claims = {"is_platform_admin": user.is_platform_admin}
+        claims = {
+            "is_platform_admin": user.is_platform_admin,
+            "email": user.email,
+        }
         access, _ = self._tokens.create_access_token(str(user.id), claims=claims)
         refresh, _ = self._tokens.create_refresh_token(str(user.id))
         return IssuedTokens(access_token=access, refresh_token=refresh, expires_in=self._access_ttl)
