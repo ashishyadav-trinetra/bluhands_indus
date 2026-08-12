@@ -24,7 +24,12 @@ def get_default_sandbox_specs():
             id=get_agent_server_image(),
             command=['python', '-m', 'openhands.agent_server'],
             initial_env={
-                'OH_ENABLE_VS_CODE': '1',
+                # agent_server Config reads env as OH_<FIELD_NAME>, so the field
+                # `enable_vscode` is OH_ENABLE_VSCODE — the old OH_ENABLE_VS_CODE
+                # spelling matched nothing (it only ever worked because the field
+                # defaults to True). OH_VSCODE_PORT / OH_VSCODE_BASE_PATH are set
+                # per-sandbox in ProcessSandboxService._start_agent_process.
+                'OH_ENABLE_VSCODE': 'true',
                 **get_agent_server_env(),
             },
             working_dir='workspace',

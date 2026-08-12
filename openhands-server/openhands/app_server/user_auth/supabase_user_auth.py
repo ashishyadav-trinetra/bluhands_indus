@@ -144,6 +144,43 @@ def _platform_llm_diff() -> dict | None:
     }
 
 
+# ── Step-budget caps for the self-hosted box ─────────────────────────────────
+# qwen3.6-35b-a3b is a *thinking* model and the box decodes at ~32 tok/s. The
+# SDK defaults (max_output_tokens=64000, reasoning_effort='high') let a single
+# agent step generate for 64000/32 = ~33 minutes, while llm.timeout is 300s — so
+# every step died with litellm.Timeout and was retried num_retries=5 times, i.e.
+# the agent sat on step 0 for ~30 minutes and never advanced. Three independent
+# brakes, cheapest first:
+#
+# 1. Hard cap the step. 4096 tok / 32 tok/s = ~128s, which fits inside the 300s
+#    timeout even after a 52k-token prefill (measured: 16s). This one works on
+#    ANY provider and is the real safety net.
+# 2. Ask for less reasoning via the first-class LiteLLM field.
+# 3. Turn qwen's thinking block off outright. Measured against the vLLM box:
+#    reasoning output 0 chars and tool calls still emitted correctly (7026 -> 74
+#    output tokens on the same prompt). Unknown chat_template_kwargs are ignored
+#    by templates that don't declare them, so this is inert on non-qwen models.
+#
+# max_input_tokens: the box serves max_model_len=262144; the SDK default of
+# 1000000 means the condenser never fires before the server rejects the request
+# outright. Leave room for the output cap.
+_SELFHOSTED_STEP_CAPS: dict = {
+    'max_output_tokens': 4096,
+    'reasoning_effort': 'low',
+    'litellm_extra_body': {'chat_template_kwargs': {'enable_thinking': False}},
+    'max_input_tokens': 200000,
+}
+
+
+def _is_selfhosted_user(email: str | None) -> bool:
+    """True when this user's email domain is in BLUHANDS_SELFHOSTED_DOMAINS."""
+    domains = os.getenv('BLUHANDS_SELFHOSTED_DOMAINS', '')
+    domain = (email or '').strip().lower().rsplit('@', 1)[-1]
+    if not (domains and domain):
+        return False
+    return domain in {d.strip().lower() for d in domains.split(',') if d.strip()}
+
+
 def _selfhosted_llm_diff(email: str | None) -> dict | None:
     """Settings diff for the org's SELF-HOSTED model (e.g. Qwen on the DGX box).
 
@@ -154,14 +191,11 @@ def _selfhosted_llm_diff(email: str | None) -> dict | None:
     endpoint (e.g. http://192.168.1.50:8000/v1). The api_key is a dummy because
     LiteLLM requires a non-empty value even when the server ignores it.
     """
-    domains = os.getenv('BLUHANDS_SELFHOSTED_DOMAINS', '')
     base_url = os.getenv('BLUHANDS_SELFHOSTED_BASE_URL')
     model = os.getenv('BLUHANDS_SELFHOSTED_MODEL')
-    if not (domains and base_url and model):
+    if not (base_url and model):
         return None
-    domain = (email or '').strip().lower().rsplit('@', 1)[-1]
-    allowed = {d.strip().lower() for d in domains.split(',') if d.strip()}
-    if not domain or domain not in allowed:
+    if not _is_selfhosted_user(email):
         return None
     # Force LiteLLM's OpenAI-compatible CHAT path. Without a provider prefix
     # (or with a 'custom/' one) LiteLLM falls into a text-completion path that
@@ -176,6 +210,7 @@ def _selfhosted_llm_diff(email: str | None) -> dict | None:
                 'model': model,
                 'base_url': base_url,
                 'api_key': os.getenv('BLUHANDS_SELFHOSTED_API_KEY', 'sk-local'),
+                **_SELFHOSTED_STEP_CAPS,
             }
         }
     }
@@ -269,6 +304,31 @@ class SupabaseUserAuth(UserAuth):
                 if settings is None:
                     settings = Settings()
                 settings.update(llm_diff)
+                # An assignment that pins a user to the self-hosted box needs the
+                # same step budget as the seeded path — otherwise assigned users
+                # get the uncapped SDK defaults and every step times out.
+                if assignment.base_url and assignment.base_url == os.getenv(
+                    'BLUHANDS_SELFHOSTED_BASE_URL'
+                ):
+                    settings.update(
+                        {'agent_settings_diff': {'llm': dict(_SELFHOSTED_STEP_CAPS)}}
+                    )
+        # Re-apply the step caps on EVERY read, not just at seed time. Users
+        # seeded before these caps existed already have an LLM key stored, so the
+        # `if not has_key` seed above never runs for them and they would keep the
+        # uncapped defaults that made every step time out. Applied in memory only
+        # — no store write, so this stays cheap.
+        # Platform admins share the trinetralabs.ai domain but run on OpenRouter
+        # (_platform_llm_diff), so they must NOT be capped — same precedence as
+        # the seed above.
+        if (
+            settings is not None
+            and not _is_platform_admin(self._user_email)
+            and _is_selfhosted_user(self._user_email)
+        ):
+            settings.update(
+                {'agent_settings_diff': {'llm': dict(_SELFHOSTED_STEP_CAPS)}}
+            )
         if settings is None:
             settings = Settings()
         
