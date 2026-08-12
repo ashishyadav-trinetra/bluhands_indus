@@ -134,13 +134,13 @@ services:
     volumes:
       - ./docker/nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "8080:80"
+      - "8082:80"
     depends_on:
       api:
         condition: service_healthy
     restart: on-failure
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost/health/live || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/health/live || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
