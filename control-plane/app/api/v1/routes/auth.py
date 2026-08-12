@@ -33,7 +33,10 @@ from app.services.auth_service import AuthService, IssuedTokens
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _REFRESH_COOKIE = "forge_refresh"
-_REFRESH_COOKIE_PATH = "/api/v1/auth"
+# Root path, not "/api/v1/auth": deployments reach this API behind a prefix
+# (nginx serves it at /forge/api/v1/auth), and a path-scoped cookie is withheld
+# on the prefixed request, so refresh fails with "Missing refresh token".
+_REFRESH_COOKIE_PATH = "/"
 
 
 def _client_ip(request: Request) -> str | None:
