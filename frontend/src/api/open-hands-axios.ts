@@ -5,13 +5,12 @@ import axios, {
 } from "axios";
 import { getAccessToken } from "#/lib/auth";
 
+// NOT VITE_API_BASE_URL — that points at the control-plane (nginx serves it under
+// /forge in prod), and prefixing OpenHands calls with it 404s them. OpenHands is
+// served from the app's own origin. No withCredentials: this client has no use for
+// the forge refresh cookie, and the cookie is now root-scoped.
 export const openHands = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_BASE_URL ||
-    (import.meta.env.VITE_BACKEND_BASE_URL
-      ? `${window.location.protocol}//${import.meta.env.VITE_BACKEND_BASE_URL}`
-      : "http://localhost:8080"),
-  withCredentials: true,
+  baseURL: `${window.location.protocol}//${import.meta.env.VITE_BACKEND_BASE_URL || window?.location.host}`,
 });
 
 // Inject the control-plane access token into all API requests.
