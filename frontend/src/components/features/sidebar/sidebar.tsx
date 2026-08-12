@@ -12,6 +12,7 @@ import { useConfig } from "#/hooks/query/use-config";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { I18nKey } from "#/i18n/declaration";
 import { cn } from "#/utils/utils";
+import { isSettingsPageHidden } from "#/utils/settings-utils";
 import { usePaginatedConversations } from "#/hooks/query/use-paginated-conversations";
 import { useStartTasks } from "#/hooks/query/use-start-tasks";
 import { useInfiniteScroll } from "#/hooks/use-infinite-scroll";
@@ -52,6 +53,11 @@ export function Sidebar() {
     isError: settingsIsError,
     isFetching: isFetchingSettings,
   } = useSettings();
+
+  const featureFlags = config?.feature_flags;
+  const userEmail = forgeMe?.user?.email || settings?.email;
+  const isReady = !!userEmail;
+  const showSettings = isReady && !isSettingsPageHidden("/settings", featureFlags, userEmail);
 
   const [settingsModalIsOpen, setSettingsModalIsOpen] = React.useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useLocalStorage(
@@ -608,8 +614,9 @@ export function Sidebar() {
           )}
 
           {/* Settings */}
-          <NavLink
-            to="/settings"
+          {showSettings && (
+            <NavLink
+              to="/settings"
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 mb-1 transition-colors",
@@ -630,8 +637,9 @@ export function Sidebar() {
               <circle cx="8" cy="8" r="3" />
               <path d="M8 1v2M8 13v2M1 8h2M13 8h2M2.9 2.9l1.4 1.4M11.7 11.7l1.4 1.4M2.9 13.1l1.4-1.4M11.7 4.3l1.4-1.4" />
             </svg>
-            <span className="text-xs">Settings</span>
-          </NavLink>
+              <span className="text-xs">Settings</span>
+            </NavLink>
+          )}
 
           {/* User profile + logout */}
           <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 group">
@@ -651,28 +659,26 @@ export function Sidebar() {
             <div className="flex-1 min-w-0">
               <p className="text-xs text-white truncate">{userName}</p>
             </div>
-            {import.meta.env.VITE_SUPABASE_URL && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const { supabase } = await import("#/lib/supabase");
-                  await supabase?.auth.signOut();
-                  window.location.href = "/login";
-                }}
-                className="opacity-0 group-hover:opacity-100 text-[#666] hover:text-red-400 transition-all"
-                title="Sign out"
+            <button
+              type="button"
+              onClick={async () => {
+                const { logout } = await import("#/lib/auth");
+                await logout();
+                window.location.href = "/login";
+              }}
+              className="opacity-0 group-hover:opacity-100 text-[#666] hover:text-red-400 transition-all"
+              title="Sign out"
+            >
+              <svg
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path d="M5 1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2M8 10l3-3-3-3M4 7h7" />
-                </svg>
-              </button>
-            )}
+                <path d="M5 1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2M8 10l3-3-3-3M4 7h7" />
+              </svg>
+            </button>
           </div>
         </div>
       </aside>

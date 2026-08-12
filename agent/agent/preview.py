@@ -79,7 +79,7 @@ def install_deps(workspace: Path | str, *, timeout: int = 600) -> tuple[bool, st
     workspace = Path(workspace)
     if (workspace / "node_modules").is_dir():
         return (True, "node_modules present")
-    res = _run(["npm", "install"], workspace, timeout)
+    res = _run(["pnpm", "i"], workspace, timeout)
     log = f"{res.stdout[-1500:]}\n{res.stderr[-1500:]}"
     return (res.returncode == 0, log)
 
@@ -103,20 +103,20 @@ def build_and_serve(
     workspace = Path(workspace)
     logs: list[str] = []
 
-    install = _run(["npm", "install"], workspace, install_timeout)
-    logs.append(f"$ npm install\n{(install.stdout or '')[-2000:]}\n{(install.stderr or '')[-2000:]}")
+    install = _run(["pnpm", "i"], workspace, install_timeout)
+    logs.append(f"$ pnpm install\n{(install.stdout or '')[-2000:]}\n{(install.stderr or '')[-2000:]}")
     if install.returncode != 0:
-        return PreviewResult(ok=False, logs="\n".join(logs), error="npm install failed")
+        return PreviewResult(ok=False, logs="\n".join(logs), error="pnpm install failed")
 
-    build = _run(["npm", "run", "build"], workspace, build_timeout)
-    logs.append(f"$ npm run build\n{(build.stdout or '')[-2000:]}\n{(build.stderr or '')[-2000:]}")
+    build = _run(["pnpm", "run", "build"], workspace, build_timeout)
+    logs.append(f"$ pnpm run build\n{(build.stdout or '')[-2000:]}\n{(build.stderr or '')[-2000:]}")
     if build.returncode != 0:
         return PreviewResult(ok=False, logs="\n".join(logs), error="next build failed")
 
     port = pick_port(preferred_port)
     stop(build_id)  # replace any prior preview for this build
     proc = subprocess.Popen(
-        [_exe("npm"), "run", "start", "--", "-p", str(port), "-H", host],
+        [_exe("pnpm"), "run", "start", "--", "-p", str(port), "-H", host],
         cwd=str(workspace),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

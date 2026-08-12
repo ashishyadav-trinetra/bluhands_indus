@@ -138,8 +138,7 @@ export const useSettings = (scope: SettingsScope = "personal") => {
     gcTime: 1000 * 60 * 15,
     enabled:
       !isOnIntermediatePage &&
-      !!userIsAuthenticated &&
-      (isOss || !!organizationId),
+      (isOss || (!!userIsAuthenticated && !!organizationId)),
     meta: {
       disableToast: true,
     },

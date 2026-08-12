@@ -53,6 +53,7 @@ class AuthService:
         blocklist,  # TokenBlocklist (Protocol) — injected
         free_credits_on_signup: int,
         access_ttl_seconds: int,
+        selfhosted_domains: str = "",
     ) -> None:
         self._users = users
         self._orgs = organizations
@@ -64,6 +65,18 @@ class AuthService:
         self._blocklist = blocklist
         self._free_credits = free_credits_on_signup
         self._access_ttl = access_ttl_seconds
+        self._selfhosted_domains = selfhosted_domains
+
+    def _resolve_platform_role(self, email: str) -> str:
+        from app.db.models.enums import PlatformRole
+
+        if not self._selfhosted_domains:
+            return PlatformRole.USER.value
+        domain = email.split("@")[-1].strip().lower()
+        allowed = {d.strip().lower() for d in self._selfhosted_domains.split(",") if d.strip()}
+        if domain in allowed:
+            return PlatformRole.SELF.value
+        return PlatformRole.USER.value
 
     # --- Registration ------------------------------------------------------
 
@@ -86,6 +99,7 @@ class AuthService:
             password_hash=self._passwords.hash(data.password),
             is_active=True,
             is_platform_admin=False,
+            platform_role=self._resolve_platform_role(email),
         )
         await self._users.add(user)
 
@@ -112,25 +126,35 @@ class AuthService:
         )
         return user
 
-    async def provision_from_supabase(
+    async def provision_from_oauth(
         self,
         *,
-        external_id: str | None,
+        provider: str,
+        subject: str,
         email: str,
         full_name: str | None = None,
         ip: str | None = None,
     ) -> User:
-        """Load-or-create the platform user behind a Supabase identity (ADR-13).
+        """Load-or-create the platform user behind a federated identity.
 
-        First Supabase login JIT-provisions the user + org + owner membership +
+        First social login JIT-provisions the user + org + owner membership +
         wallet (same atomic pattern as ``register``), but with no password — the
-        credential lives in Supabase. Subsequent logins just load the user and
-        backfill ``external_id`` if it was missing.
+        identity provider owns the credential. Subsequent logins just load the
+        user and backfill ``external_id`` if it was missing.
+
+        ``external_id`` is namespaced (``google:1234``) so two providers issuing
+        the same opaque subject can never collide into one account.
+
+        Args:
+            provider: Identity provider key, e.g. ``"google"``.
+            subject: The provider's stable, opaque user id (never the email).
         """
         email = email.lower()
+        external_id = f"{provider}:{subject}"
+
         existing = await self._users.get_by_email(email)
         if existing is not None:
-            if external_id and existing.external_id is None:
+            if existing.external_id is None:
                 existing.external_id = external_id
             # Self-heal: ensure the user has an org + owner membership. Users
             # created before provisioning existed (or by a half-completed first
@@ -140,22 +164,23 @@ class AuthService:
             if not memberships:
                 await self._provision_org(
                     existing, email=email, full_name=full_name, ip=ip,
-                    action="user.provision_supabase_backfill",
+                    action=f"user.provision_{provider}_backfill",
                 )
             return existing
 
         user = User(
             email=email,
             full_name=full_name,
-            password_hash=None,  # Supabase owns the credential
+            password_hash=None,  # the identity provider owns the credential
             external_id=external_id,
             is_active=True,
             is_platform_admin=False,
+            platform_role=self._resolve_platform_role(email),
         )
         await self._users.add(user)
         await self._provision_org(
             user, email=email, full_name=full_name, ip=ip,
-            action="user.provision_supabase",
+            action=f"user.provision_{provider}",
         )
         return user
 
@@ -221,6 +246,13 @@ class AuthService:
             )
             raise AuthenticationError("Invalid email or password")
 
+        # Transparent hash upgrade: hashes made with outdated Argon2 parameters are
+        # re-hashed with current settings now that we hold the plaintext. Lets us
+        # raise the cost factor later without locking anyone out. Shares the
+        # caller's transaction.
+        if password_hash and self._passwords.needs_rehash(password_hash):
+            user.password_hash = self._passwords.hash(password)
+
         await self._audit.record(
             AuditEvent(
                 actor=f"user:{user.id}",
@@ -235,7 +267,10 @@ class AuthService:
 
     def issue_tokens(self, user: User) -> IssuedTokens:
         """Mint a fresh access + refresh token pair for ``user``."""
-        claims = {"is_platform_admin": user.is_platform_admin}
+        claims = {
+            "is_platform_admin": user.is_platform_admin,
+            "email": user.email,
+        }
         access, _ = self._tokens.create_access_token(str(user.id), claims=claims)
         refresh, _ = self._tokens.create_refresh_token(str(user.id))
         return IssuedTokens(access_token=access, refresh_token=refresh, expires_in=self._access_ttl)

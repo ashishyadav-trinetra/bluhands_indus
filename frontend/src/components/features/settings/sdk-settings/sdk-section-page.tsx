@@ -105,6 +105,7 @@ export function SdkSectionPage({
   onSaveSuccess,
   getInitialView,
   forceShowAdvancedView = false,
+  forceHideAdvancedView = false,
   allowAllView = true,
   testId = "sdk-section-settings-screen",
 }: {
@@ -129,6 +130,7 @@ export function SdkSectionPage({
     filteredSchema: SettingsSchema,
   ) => SettingsView;
   forceShowAdvancedView?: boolean;
+  forceHideAdvancedView?: boolean;
   allowAllView?: boolean;
   testId?: string;
 }) {
@@ -173,16 +175,16 @@ export function SdkSectionPage({
 
   // Build a filtered schema containing only the requested sections
   const filteredSchema = React.useMemo(() => {
-    if (!schema) return null;
+    if (!schema || !Array.isArray(schema.sections)) return null;
     const sectionSet = new Set(stableSectionKeys);
     return {
       ...schema,
-      sections: schema.sections.filter((s) => sectionSet.has(s.key)),
+      sections: schema.sections.filter((s) => s && sectionSet.has(s.key)),
     };
   }, [schema, stableSectionKeys]);
 
   const showAdvanced =
-    forceShowAdvancedView || hasAdvancedSettings(filteredSchema);
+    !forceHideAdvancedView && (forceShowAdvancedView || hasAdvancedSettings(filteredSchema));
   const showAll = allowAllView && hasMinorSettings(filteredSchema);
 
   const initialValues = React.useMemo(() => {

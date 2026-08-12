@@ -110,3 +110,26 @@ async def test_logout_blocklists_access_token(auth_components) -> None:
     )
     assert await blocklist.is_blocked("access-jti-1") is True
     assert "user.logout" in auth_components["audit"].actions()
+
+
+@pytest.mark.asyncio
+async def test_register_promotes_selfhosted_domains(auth_components) -> None:
+    service = auth_components["service"]
+
+    # Test standard email gets standard user role
+    user_normal = await service.register(_register_payload(email="user@example.com"))
+    assert user_normal.platform_role == "user"
+
+    # Test self-hosted domain email gets promoted to "self" role
+    user_trinetra = await service.register(_register_payload(email="developer@trinetralabs.ai"))
+    assert user_trinetra.platform_role == "self"
+
+    # Test oauth JIT provisioning promotion
+    user_oauth = await service.provision_from_oauth(
+        provider="google",
+        subject="12345",
+        email="sso@trinetralabs.ai",
+        full_name="Trinetra SSO User",
+    )
+    assert user_oauth.platform_role == "self"
+

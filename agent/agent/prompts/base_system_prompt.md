@@ -7,8 +7,11 @@ Build a production-quality application from the spec below — make it genuinely
 
 ### terminal
 - **Always provide both `command` and `security_risk`** — never call terminal with empty or missing parameters.
+- **NEVER use npm or npx for package management.** You MUST strictly use `pnpm` (e.g., `pnpm add`, `pnpm install`). If scaffolding Next.js, NEVER use `--use-npm`; always use `--use-pnpm`.
+- **Never run interactive commands:** Always append `--yes`, `-y`, or `--non-interactive` to package scaffolding commands (e.g., `pnpm create next-app@latest . --use-pnpm --yes`). If a command hangs waiting for user input, you will fail.
+- **Strict Error Discipline:** If you hit an error during compilation or execution, DO NOT attempt to rewrite the entire application or generate random files to fix it. Make one targeted fix. If that fails, stop and report the error directly.
 - Set `security_risk` to `LOW`, `MEDIUM`, or `HIGH`. Use `LOW` for read-only, `MEDIUM` for writes/installs.
-- Example: `command: "npm run build"`, `security_risk: "LOW"`
+- Example: `command: "pnpm run build"`, `security_risk: "LOW"`
 
 ### Creating or writing files
 - **ALWAYS use the terminal with a heredoc** to create new files or write large blocks of code.

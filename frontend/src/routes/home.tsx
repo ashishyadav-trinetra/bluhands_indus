@@ -327,7 +327,7 @@ function HomeScreen() {
 
   const uiBusy = isPending || checking;
 
-  // Prefer the authenticated user's real identity (forge/Supabase) over the
+  // Prefer the authenticated user's real identity (forge) over the
   // per-user OpenHands git name, which is empty for fresh users.
   const userName =
     forgeMe?.full_name ||
@@ -339,7 +339,9 @@ function HomeScreen() {
   const firstName = userName.split(" ")[0];
 
   // Extract current model display name
-  const currentModel = settings?.llm_model || "gemini-2.0-flash";
+  const isTrinetra = forgeMe?.email?.toLowerCase().endsWith("@trinetralabs.ai");
+  const fallbackModel = isTrinetra ? "openai/qwen3.6:latest" : "openrouter/anthropic/claude-sonnet-4.5";
+  const currentModel = settings?.llm_model || fallbackModel;
   const modelShortName =
     currentModel.split("/").pop()?.split(":")[0] || currentModel;
 
@@ -365,7 +367,13 @@ function HomeScreen() {
       { query: prompt },
       {
         onSuccess: (data) => navigate(`/conversations/${data.conversation_id}`),
-        onError: () => toast.error("Couldn't start the build. Please try again."),
+        onError: (error: any) => {
+          if (error?.response?.status === 402 || error?.status === 402) {
+            setShowUpgrade(true);
+          } else {
+            toast.error("Couldn't start the build. Please try again.");
+          }
+        },
       },
     );
   };

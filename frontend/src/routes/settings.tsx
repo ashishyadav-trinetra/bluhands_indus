@@ -22,6 +22,8 @@ import { useOrgTypeAndAccess } from "#/hooks/use-org-type-and-access";
 import { useConfig } from "#/hooks/query/use-config";
 import { useMe } from "#/hooks/query/use-me";
 import { OrgWideSettingsBadge } from "#/components/features/settings/org-wide-settings-badge";
+import { getSettingsQueryFn } from "#/hooks/query/use-settings";
+import { getUserEmailFromToken } from "#/lib/auth";
 
 const SAAS_ONLY_PATHS = [
   "/settings/user",
@@ -60,16 +62,31 @@ export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
     return redirect("/settings");
   }
 
-  // Step 3: Check feature flag-based hiding and redirect IMMEDIATELY (no user data required)
-  // This handles hide_llm_settings, hide_users_page, hide_billing_page, hide_integrations_page
-  if (isSettingsPageHidden(pathname, featureFlags)) {
-    const fallbackPath = getFirstAvailablePath(isSaas, featureFlags);
-    if (fallbackPath && fallbackPath !== pathname) {
-      return redirect(fallbackPath);
+  // Step 3: Fetch active user to check domain-based overrides
+  let userEmail: string | undefined = getUserEmailFromToken() || undefined;
+  if (!userEmail) {
+    try {
+      const settings = await getSettingsQueryFn("personal");
+      userEmail = settings.email;
+    } catch (e) {
+      // Ignore error if not logged in
     }
   }
 
-  // Step 4: For routes that need permission checks, get user data
+  console.log("[DEBUG] Pathname:", pathname, "featureFlags:", featureFlags, "userEmail:", userEmail, "isSettingsPageHidden:", isSettingsPageHidden(pathname, featureFlags, userEmail));
+
+  // Step 4: Check feature flag-based and domain-based hiding and redirect IMMEDIATELY
+  // This handles hide_llm_settings, hide_users_page, hide_billing_page, hide_integrations_page
+  if (isSettingsPageHidden(pathname, featureFlags, userEmail)) {
+    const fallbackPath = getFirstAvailablePath(isSaas, featureFlags, userEmail);
+    if (fallbackPath && fallbackPath !== pathname) {
+      return redirect(fallbackPath);
+    } else if (!fallbackPath) {
+      return redirect("/");
+    }
+  }
+
+  // Step 5: For routes that need permission checks
   // Only fetch user data for billing and org routes that need permission validation
   if (
     pathname === "/settings/billing" ||

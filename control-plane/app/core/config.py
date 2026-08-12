@@ -81,14 +81,15 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = None
     s3_signed_url_ttl_seconds: int = 900
 
-    # --- Supabase (platform-user IdP, ADR-13) ---
-    supabase_url: str | None = None
-    supabase_jwks_url: str | None = None
-    supabase_service_role_key: str | None = None
-    # HS256 shared secret (legacy projects). Either this OR supabase_jwks_url
-    # enables Supabase token verification in get_current_user.
-    supabase_jwt_secret: str | None = None
-    supabase_jwt_audience: str = "authenticated"
+    # --- Google Sign-In (OIDC authorization-code + PKCE) ---
+    # Configured at console.cloud.google.com → Credentials → OAuth 2.0 Client ID
+    # (type: Web application). Leave unset to hide the Google button.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    # Must match an Authorized redirect URI on the Google client, exactly.
+    google_redirect_uri: str = "http://localhost:8080/api/v1/auth/oauth/google/callback"
+    # Where to send the browser after the callback completes.
+    frontend_base_url: str = "http://localhost:3300"
 
     # --- Payments ---
     payment_provider: PaymentProvider = PaymentProvider.STRIPE
@@ -106,6 +107,10 @@ class Settings(BaseSettings):
 
     # --- Rate limiting ---
     rate_limit_default_per_min: int = 100
+    # Credential endpoints (login/register) are throttled per client IP. Tight by
+    # design: this is the brute-force boundary Supabase used to cover for us.
+    auth_rate_limit_per_ip: int = 10
+    auth_rate_limit_window_seconds: int = 300
 
     # --- Nango (integration auth layer) ---
     nango_secret_key: str | None = None          # FORGE_NANGO_SECRET_KEY
@@ -132,7 +137,9 @@ class Settings(BaseSettings):
     # Placeholders — set the real values via env (FORGE_MODEL_TESTER / FORGE_MODEL_SELF).
     model_default: str = "openrouter/anthropic/claude-sonnet-4.5"
     model_tester: str = "openrouter/minimax/minimax-01"  # tester role: one fixed model
-    model_self: str = "openrouter/qwen/qwen-3.6"  # internal staff: self-hosted Qwen
+    model_self: str = "openai/qwen3.6:latest"  # internal staff: self-hosted Qwen
+    selfhosted_domains: str = "trinetralabs.ai"
+
 
     # --- GitHub integration (via Nango) ---
     # The Nango provider_config_key for GitHub (must match your Nango dashboard).

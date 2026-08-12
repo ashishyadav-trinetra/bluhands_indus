@@ -58,11 +58,36 @@ export const extractSettings = (
 /**
  * Checks if a settings page should be hidden based on feature flags.
  * Used by both the route loader and navigation hook to keep logic in sync.
+ *
+ * Three user tiers:
+ *   1. Admin (admin@trinetralabs.ai) → sees ALL settings tabs
+ *   2. Trinetra non-admin (@trinetralabs.ai) → sees NO settings (model locked to Qwen)
+ *   3. Normal user (everyone else) → sees only /settings (LLM basic view)
  */
 export function isSettingsPageHidden(
   path: string,
   featureFlags: WebClientFeatureFlags | undefined,
+  userEmail?: string,
 ): boolean {
+  const emailLower = (userEmail || "").trim().toLowerCase();
+  const isAdmin = emailLower === "admin@trinetralabs.ai";
+  const isTrinetra = emailLower.endsWith("@trinetralabs.ai");
+
+  // ── Tier 1: Admin sees everything — skip all RBAC checks ──────────────
+  if (isAdmin) {
+    // Still respect feature-flag toggles below, but no role-based hiding.
+  }
+  // ── Tier 2: Trinetra non-admin — NO settings at all ───────────────────
+  else if (isTrinetra) {
+    if (path.startsWith("/settings")) return true;
+  }
+  // ── Tier 3: Normal user — only /settings (LLM basic view) ─────────────
+  else if (emailLower) {
+    // Allow exactly /settings (the LLM index route). Hide every other sub-route.
+    if (path.startsWith("/settings") && path !== "/settings") return true;
+  }
+
+  // ── Feature-flag overrides (apply to all users including admin) ────────
   if (
     featureFlags?.hide_llm_settings &&
     (path === "/settings" || path.startsWith("/settings/org-defaults"))
@@ -83,6 +108,7 @@ export function isSettingsPageHidden(
 export function getFirstAvailablePath(
   isSaas: boolean,
   featureFlags: WebClientFeatureFlags | undefined,
+  userEmail?: string,
 ): string | null {
   const saasFallbackOrder = [
     { path: "/settings/user", hidden: !!featureFlags?.hide_users_page },
@@ -110,7 +136,10 @@ export function getFirstAvailablePath(
   ];
 
   const fallbackOrder = isSaas ? saasFallbackOrder : ossFallbackOrder;
-  const firstAvailable = fallbackOrder.find((item) => !item.hidden);
+  // Also pass the fallback paths through isSettingsPageHidden just in case
+  const firstAvailable = fallbackOrder.find(
+    (item) => !item.hidden && !isSettingsPageHidden(item.path, featureFlags, userEmail),
+  );
 
   return firstAvailable?.path ?? null;
 }

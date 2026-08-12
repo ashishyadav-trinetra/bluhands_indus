@@ -26,6 +26,7 @@ import {
   type SettingsView,
 } from "#/utils/sdk-settings-schema";
 import { DEFAULT_SETTINGS } from "#/services/settings";
+import { useForgeMe } from "#/hooks/query/use-forge-me";
 
 const LLM_EXCLUDED_KEYS = new Set(["llm.model", "llm.api_key", "llm.base_url"]);
 
@@ -393,6 +394,10 @@ export function LlmSettingsScreen({
     [isSaasMode, schema, selectedProvider],
   );
 
+  // Admin gets advanced view; normal users stay basic-only.
+  const { data: forgeMe } = useForgeMe();
+  const isAdmin = forgeMe?.user?.email?.toLowerCase() === "admin@trinetralabs.ai";
+
   return (
     <SdkSectionPage
       scope={scope}
@@ -400,9 +405,9 @@ export function LlmSettingsScreen({
       excludeKeys={LLM_EXCLUDED_KEYS}
       header={buildHeader}
       buildPayload={buildPayload}
-      getInitialView={getInitialView}
-      forceShowAdvancedView
-      allowAllView={!isSaasMode}
+      getInitialView={() => "basic"}
+      forceHideAdvancedView={!isAdmin}
+      allowAllView={isAdmin}
       testId="llm-settings-screen"
     />
   );

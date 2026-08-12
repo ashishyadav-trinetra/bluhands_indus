@@ -13,12 +13,14 @@ from app.api.v1.routes import (
     domains,
     github,
     integrations,
+    oauth,
     payments,
     tenants,
 )
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(oauth.router)
 api_router.include_router(tenants.router)
 api_router.include_router(builds.router)
 api_router.include_router(payments.router)
