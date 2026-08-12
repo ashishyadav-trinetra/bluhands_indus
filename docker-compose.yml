@@ -94,6 +94,10 @@ services:
       # e.g. agent-server on 18000 → preview on 28000. Host nginx proxies
       # /runtime/{port}/ → 127.0.0.1:{port} directly, so publish both ranges.
       - "28000-28030:28000-28030"
+      # Per-sandbox VS Code servers (agent-server port + 20000 offset).
+      # e.g. agent-server on 18000 → VS Code on 38000. Host nginx proxies
+      # /vscode/{port}/ → 127.0.0.1:{port} WITHOUT stripping the prefix.
+      - "38000-38030:38000-38030"
     restart: on-failure
     healthcheck:
       # agent-schema needs no auth/DB — a 200 here proves the v1 API is live.

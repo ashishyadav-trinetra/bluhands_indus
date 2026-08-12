@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import AsyncGenerator
+from urllib.parse import urlencode
 
 import base62
 import httpx
@@ -26,6 +27,7 @@ from openhands.agent_server.utils import utc_now
 from openhands.app_server.errors import SandboxError
 from openhands.app_server.sandbox.sandbox_models import (
     AGENT_SERVER,
+    VSCODE,
     ExposedUrl,
     SandboxInfo,
     SandboxPage,
@@ -64,6 +66,19 @@ APP_PREVIEW_PORT_OFFSET = 10000
 def app_preview_port_for(agent_server_port: int) -> int:
     """Return the dedicated app-preview port for a sandbox's agent-server port."""
     return agent_server_port + APP_PREVIEW_PORT_OFFSET
+
+
+# Every sandbox in this runtime is a subprocess of the SAME container, so they
+# cannot share the agent-server's default VS Code port (8001) — the first
+# sandbox would bind it and every later one would find the port taken and
+# silently disable VS Code. Derive a unique port per sandbox the same way the
+# app-preview port is derived: agent-server 18000 -> VS Code 38000.
+VSCODE_PORT_OFFSET = 20000
+
+
+def vscode_port_for(agent_server_port: int) -> int:
+    """Return the dedicated VS Code port for a sandbox's agent-server port."""
+    return agent_server_port + VSCODE_PORT_OFFSET
 
 
 class ProcessInfo(BaseModel):
@@ -217,6 +232,17 @@ class ProcessSandboxService(SandboxService):
         env.update(sandbox_spec.initial_env)
         env['SESSION_API_KEY'] = session_api_key
         env['AGENT_SANDBOX_DIR'] = working_dir
+
+        # VS Code: applied AFTER the spec env because these are per-sandbox and
+        # the spec's initial_env is shared by every sandbox. The connection token
+        # is SESSION_API_KEY above (agent_server Config falls back to it for
+        # session_api_keys, and VSCodeService uses session_api_keys[0] as
+        # --connection-token).
+        vscode_port = vscode_port_for(port)
+        env['OH_VSCODE_PORT'] = str(vscode_port)
+        base_path = self._vscode_base_path(vscode_port)
+        if base_path:
+            env['OH_VSCODE_BASE_PATH'] = base_path
 
         if self.enterprise_webhook_url:
             import json as _json
@@ -458,6 +484,53 @@ class ProcessSandboxService(SandboxService):
         except OSError:
             return False
 
+    def _vscode_base_path(self, vscode_port: int) -> str | None:
+        """The public path prefix VS Code is served under, or None if there is none.
+
+        openvscode-server emits ABSOLUTE asset URLs, so when it sits behind the
+        /vscode/{port}/ reverse proxy it must be told that prefix
+        (--server-base-path) or every asset 404s and the tab renders blank. The
+        nginx location for this prefix deliberately does NOT strip it, so what
+        VS Code emits is exactly what it receives.
+
+        When container_url_pattern is the plain host:port default (dev, no
+        proxy) there is no prefix — returning None leaves VS Code at the root,
+        which is what http://localhost:{port}/ expects. Setting a base path
+        there would break it.
+        """
+        if '/runtime/' not in self.container_url_pattern:
+            return None
+        return f'/vscode/{vscode_port}'
+
+    def _vscode_exposed_url(self, process_info: ProcessInfo) -> ExposedUrl | None:
+        """Build the VS Code URL for this sandbox, or None if it isn't up.
+
+        The agent-server starts openvscode-server itself during boot, but it
+        gives up when the binary is missing or the port is taken — so we only
+        advertise the URL once something is actually listening. The frontend
+        matches on the name "VSCODE" exactly (use-unified-vscode-url.ts).
+        """
+        port = vscode_port_for(process_info.port)
+        if not self._port_is_listening(port):
+            return None
+
+        # container_url_pattern is the public reverse-proxy pattern for sandbox
+        # ports (e.g. "https://app.bluehands.ai/runtime/{port}"). VS Code needs
+        # the sibling prefix that nginx forwards WITHOUT stripping, because
+        # openvscode-server emits absolute asset paths. When the pattern is the
+        # plain host:port default there's nothing to swap and it still works,
+        # since the port range is published on the host.
+        pattern = self.container_url_pattern.replace('/runtime/', '/vscode/')
+        base = pattern.format(port=port).rstrip('/')
+
+        # Matches VSCodeService.get_vscode_url(): the connection token is the
+        # sandbox's session_api_key, and `folder` opens the agent's workspace.
+        workspace = os.path.join(process_info.working_dir, 'workspace')
+        query = urlencode(
+            {'tkn': process_info.session_api_key, 'folder': workspace}
+        )
+        return ExposedUrl(name=VSCODE, url=f'{base}/?{query}', port=port)
+
     def _get_listening_preview_ports(self, process_info: ProcessInfo) -> list[int]:
         """Return preview ports this sandbox's app is actually serving on.
 
@@ -544,6 +617,9 @@ class ProcessSandboxService(SandboxService):
                         ),
                         *worker_urls,
                     ]
+                    vscode_url = self._vscode_exposed_url(process_info)
+                    if vscode_url is not None:
+                        exposed_urls.append(vscode_url)
                     session_api_key = process_info.session_api_key
                 else:
                     status = SandboxStatus.ERROR

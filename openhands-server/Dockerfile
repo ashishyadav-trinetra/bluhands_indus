@@ -16,8 +16,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# git + curl for tooling; Node 22 for the process-sandbox runtime (conversations).
-RUN apt-get update && apt-get install -y --no-install-recommends git curl \
+# git + curl + wget for tooling; Node 22 for the process-sandbox runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends git curl wget \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
  && npm install -g pnpm \
@@ -25,6 +25,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl \
  && ln -s $(which pnpm) /usr/bin/npm \
  && ln -s $(which pnpm) /usr/bin/npx \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ── openvscode-server (the "Code" tab) ───────────────────────────────────────
+# The agent-server starts VS Code itself on boot, but only if the binary is at
+# this EXACT path — VSCodeService hardcodes `Path("/openhands/.openvscode-server")`
+# and silently disables VS Code when it's missing ("VSCode server binary not
+# found"), which is why the tab has always said "URL not available" under
+# RUNTIME=process. Same release + layout the upstream agent-server image uses.
+ARG OPENVSCODE_RELEASE_TAG="openvscode-server-v1.98.2"
+ENV OPENVSCODE_SERVER_ROOT=/openhands/.openvscode-server
+RUN set -eux; \
+    mkdir -p "$(dirname ${OPENVSCODE_SERVER_ROOT})"; \
+    arch="$(uname -m)"; \
+    if [ "${arch}" = "x86_64" ]; then arch="x64"; \
+    elif [ "${arch}" = "aarch64" ]; then arch="arm64"; \
+    elif [ "${arch}" = "armv7l" ]; then arch="armhf"; fi; \
+    wget -q "https://github.com/gitpod-io/openvscode-server/releases/download/${OPENVSCODE_RELEASE_TAG}/${OPENVSCODE_RELEASE_TAG}-linux-${arch}.tar.gz"; \
+    tar -xzf "${OPENVSCODE_RELEASE_TAG}-linux-${arch}.tar.gz"; \
+    rm -rf "${OPENVSCODE_SERVER_ROOT}"; \
+    mv "${OPENVSCODE_RELEASE_TAG}-linux-${arch}" "${OPENVSCODE_SERVER_ROOT}"; \
+    cp "${OPENVSCODE_SERVER_ROOT}/bin/remote-cli/openvscode-server" \
+       "${OPENVSCODE_SERVER_ROOT}/bin/remote-cli/code"; \
+    rm -f "${OPENVSCODE_RELEASE_TAG}-linux-${arch}.tar.gz"
 
 RUN pip install --no-cache-dir uv
 
