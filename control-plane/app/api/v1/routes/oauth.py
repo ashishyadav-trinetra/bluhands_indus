@@ -229,6 +229,7 @@ def _redirect_to_frontend(
             # "lax" (not "strict") so the cookie survives Google's cross-site
             # redirect back to us — a strict cookie is withheld on that hop.
             samesite="lax",
-            path="/api/v1/auth",
+            # Root path — see _REFRESH_COOKIE_PATH in auth.py.
+            path="/",
         )
     return response

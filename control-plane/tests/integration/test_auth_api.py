@@ -44,6 +44,8 @@ async def test_register_returns_token_and_sets_refresh_cookie(auth_app) -> None:
     assert body["data"]["token_type"] == "bearer"
     assert "forge_refresh" in resp.headers.get("set-cookie", "")
     assert "httponly" in resp.headers.get("set-cookie", "").lower()
+    # Root path, so the cookie survives a prefixed deployment (/forge/api/v1/auth).
+    assert "path=/;" in resp.headers.get("set-cookie", "").lower()
 
 
 @pytest.mark.asyncio
