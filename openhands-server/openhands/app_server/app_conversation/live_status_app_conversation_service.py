@@ -1157,11 +1157,35 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             _max_out = 16000
         max_output_tokens = _max_out if _max_out > 0 else None
 
+        user_llm = user.agent_settings.llm
+
+        # Whichever output cap is STRICTER wins. The env cap above protects the
+        # OpenRouter balance; a lower per-user cap protects slow self-hosted
+        # boxes, where the cap is really a *time* budget: on a ~32 tok/s endpoint
+        # the default 16000 takes 500s to generate but llm.timeout is 300s, so
+        # every step died with litellm.Timeout, got retried num_retries=5 times,
+        # and the agent sat on step 0 for ~30 minutes without ever advancing.
+        if user_llm.max_output_tokens:
+            max_output_tokens = (
+                min(max_output_tokens, user_llm.max_output_tokens)
+                if max_output_tokens
+                else user_llm.max_output_tokens
+            )
+
         return LLM(
             model=model,
             base_url=base_url,
-            api_key=user.agent_settings.llm.api_key,
+            api_key=user_llm.api_key,
             max_output_tokens=max_output_tokens,
+            # Carry the tuning fields through from the user's settings.
+            # Rebuilding the LLM from just (model, base_url, api_key) silently
+            # reset these to SDK defaults, so anything configured per-user —
+            # reasoning effort, provider extra_body, context limit, timeout —
+            # never reached the conversation that actually runs.
+            reasoning_effort=user_llm.reasoning_effort,
+            litellm_extra_body=user_llm.litellm_extra_body,
+            max_input_tokens=user_llm.max_input_tokens,
+            timeout=user_llm.timeout,
             usage_id='agent',
         )
 
