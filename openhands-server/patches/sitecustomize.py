@@ -32,3 +32,10 @@ try:
     import fix_task_tracker  # noqa: F401
 except Exception:
     pass
+
+# Map the frontend's hardcoded /workspace/project onto the process sandbox's
+# real workspace, so the Changes tab works instead of raising GitRepositoryError.
+try:
+    import fix_git_workspace_path  # noqa: F401
+except Exception:
+    pass

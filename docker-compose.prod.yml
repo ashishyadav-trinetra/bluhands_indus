@@ -65,9 +65,9 @@ services:
       #   BLUHANDS_SELFHOSTED_BASE_URL=http://<dgx-ip>:<port>/v1
       #   BLUHANDS_SELFHOSTED_MODEL=openai/<served-model-name>   (LiteLLM slug)
       BLUHANDS_SELFHOSTED_DOMAINS: "${BLUHANDS_SELFHOSTED_DOMAINS:-trinetralabs.ai}"
-      BLUHANDS_SELFHOSTED_BASE_URL: "${BLUHANDS_SELFHOSTED_BASE_URL:-http://172.16.16.40:11434/v1}"
-      BLUHANDS_SELFHOSTED_MODEL: "${BLUHANDS_SELFHOSTED_MODEL:-openai/qwen3.6:latest}"
-      BLUHANDS_SELFHOSTED_API_KEY: "${BLUHANDS_SELFHOSTED_API_KEY:-ollama}"
+      BLUHANDS_SELFHOSTED_BASE_URL: "${BLUHANDS_SELFHOSTED_BASE_URL:-http://122.160.253.37:8000/v1}"
+      BLUHANDS_SELFHOSTED_MODEL: "${BLUHANDS_SELFHOSTED_MODEL:-openai/qwen3.6-35b-a3b}"
+      BLUHANDS_SELFHOSTED_API_KEY: "${BLUHANDS_SELFHOSTED_API_KEY:-}"
       # LLM is configured per-user via the UI Settings page (settings store).
       # OPENROUTER_API_KEY is exposed so LiteLLM can route openrouter/* models.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
