@@ -288,21 +288,40 @@ class SupabaseUserAuth(UserAuth):
         settings_store = await self.get_user_settings_store()
         settings = await settings_store.load()
             
-        # BluHands: platform admins build on the company model+key. Seed it
-        # whenever they have NO LLM key yet — not just when settings are absent
-        # (a settings row exists after the analytics-consent save, but with no
-        # LLM). Normal users get nothing → they can never use this key.
         has_key = settings is not None and bool(
             getattr(settings, 'llm_api_key_is_set', False)
         )
-        if not has_key:
-            # Precedence: platform admins get the OpenRouter paid model so they
-            # can build with the best model. Non-admin domain-matched users get
-            # the self-hosted model (Qwen). Users who are neither get nothing.
-            if _is_platform_admin(self._user_email):
-                diff = _platform_llm_diff()
-            else:
-                diff = _selfhosted_llm_diff(self._user_email)
+        is_admin = _is_platform_admin(self._user_email)
+
+        # BluHands tiers:
+        #
+        # * Non-admin @<selfhosted-domain> users are PINNED to the self-hosted
+        #   model — it is seeded for them AND re-applied on every read, so it
+        #   cannot be changed. The UI hides the Settings page for these users,
+        #   but that is cosmetic: POST /api/v1/settings stays reachable, so the
+        #   pin has to be enforced server-side on read or the model can drift
+        #   (and then never gets corrected, because the seed below only ever
+        #   fired when no key was stored).
+        # * Platform admins are NOT pinned — they build on the company
+        #   OpenRouter model, or bring their own provider/key, and may change it
+        #   freely. Their model is only seeded when they have none yet.
+        # * Everyone else gets nothing → they must upgrade, and can never use
+        #   the company key.
+        pinned_diff = None if is_admin else _selfhosted_llm_diff(self._user_email)
+
+        if pinned_diff is not None:
+            if settings is None:
+                settings = Settings()
+            settings.update(pinned_diff)
+            # Persist only on first seed; re-pins are in-memory so we don't
+            # write to the settings store on every request.
+            if not has_key:
+                try:
+                    await settings_store.store(settings)
+                except Exception:  # noqa: BLE001 - seeding is best-effort
+                    pass
+        elif not has_key and is_admin:
+            diff = _platform_llm_diff()
             if diff is not None:
                 if settings is None:
                     settings = Settings()
