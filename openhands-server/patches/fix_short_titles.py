@@ -16,6 +16,8 @@ handling and fallback all stay the SDK's.
 Loaded via sitecustomize.py at interpreter startup.
 """
 
+import sys
+
 _SYSTEM_PROMPT = (
     'You name projects. Given the user\'s first message, reply with a SHORT '
     'NAME for what they are building — 2 to 3 words, Title Case. '
@@ -69,16 +71,31 @@ def _apply_short_title_patch():
                 if len(title) > max_length:
                     title = title[: max_length - 3] + '...'
                 return title
-            except Exception:
-                # Same contract as the SDK: None -> caller uses the fallback.
+            except Exception as e:
+                # Same contract as the SDK: None -> caller uses the fallback
+                # (which truncates the prompt). Report it: a silent fallback
+                # here is indistinguishable from "the patch never loaded", and
+                # that ambiguity is expensive to debug.
+                print(
+                    f'[bluhands] short-title generation failed: {type(e).__name__}: {e}',
+                    file=sys.stderr,
+                    flush=True,
+                )
                 return None
 
         # generate_title_from_message looks this up as a module global at call
         # time (same module), so rebinding the attribute is enough — unlike the
         # git patch, where the callers had imported the name into other modules.
         title_utils.generate_title_with_llm = _short_title
-    except Exception:
-        pass
+    except Exception as e:
+        # Never swallow this silently — if the patch fails to install, titles
+        # quietly stay as truncated prompts and look identical to "the LLM
+        # call failed", which is a different bug entirely.
+        print(
+            f'[bluhands] short-title patch NOT installed: {type(e).__name__}: {e}',
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 _apply_short_title_patch()
