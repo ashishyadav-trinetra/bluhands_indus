@@ -1650,7 +1650,12 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
                     f'-w "%{{http_code}}" {host_hint}/runtime/{app_port}/` must print '
                     '200.\n'
                     f'Always use port {app_port} (reserved for this workspace); '
-                    'never 3000, 8080, 5173 or 8000.\n'
+                    'never 3000, 8080, 5173, 8000 or 8011.\n'
+                    f'This OVERRIDES any port the user asks for. Only {app_port} '
+                    'is published to the reverse proxy — an app bound to any '
+                    'other port returns 502 to the user even though it is running '
+                    'fine inside the sandbox. If the user names a different port, '
+                    f'use {app_port} anyway and tell them the live URL.\n'
                     '</APP_PREVIEW>'
                 )
                 effective_suffix = (
