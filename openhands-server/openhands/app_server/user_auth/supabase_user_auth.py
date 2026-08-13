@@ -173,12 +173,38 @@ _SELFHOSTED_STEP_CAPS: dict = {
 
 
 def _is_selfhosted_user(email: str | None) -> bool:
-    """True when this user's email domain is in BLUHANDS_SELFHOSTED_DOMAINS."""
+    """True when this user's email domain is in BLUHANDS_SELFHOSTED_DOMAINS.
+
+    This decides who gets *seeded* with the self-hosted model. It must NOT be
+    used to decide who gets the step caps — see _runs_on_selfhosted_box.
+    """
     domains = os.getenv('BLUHANDS_SELFHOSTED_DOMAINS', '')
     domain = (email or '').strip().lower().rsplit('@', 1)[-1]
     if not (domains and domain):
         return False
     return domain in {d.strip().lower() for d in domains.split(',') if d.strip()}
+
+
+def _runs_on_selfhosted_box(settings) -> bool:
+    """True when the RESOLVED LLM actually targets the self-hosted endpoint.
+
+    Keyed on the endpoint, not the person. Gating the caps on email was wrong:
+    platform admins are excluded from the self-hosted *seed* (they get the
+    OpenRouter model instead), but an admin who points their settings at the
+    box by hand is running the same slow thinking model as everyone else and
+    needs the same step budget. Checking the endpoint covers every route onto
+    the box — seeded users, admin assignments, and manual Settings edits.
+    """
+    base_url = os.getenv('BLUHANDS_SELFHOSTED_BASE_URL')
+    if settings is None or not base_url:
+        return False
+    try:
+        resolved = settings.agent_settings.llm.base_url
+    except AttributeError:
+        return False
+    if not resolved:
+        return False
+    return str(resolved).rstrip('/') == base_url.rstrip('/')
 
 
 def _selfhosted_llm_diff(email: str | None) -> dict | None:
@@ -304,28 +330,13 @@ class SupabaseUserAuth(UserAuth):
                 if settings is None:
                     settings = Settings()
                 settings.update(llm_diff)
-                # An assignment that pins a user to the self-hosted box needs the
-                # same step budget as the seeded path — otherwise assigned users
-                # get the uncapped SDK defaults and every step times out.
-                if assignment.base_url and assignment.base_url == os.getenv(
-                    'BLUHANDS_SELFHOSTED_BASE_URL'
-                ):
-                    settings.update(
-                        {'agent_settings_diff': {'llm': dict(_SELFHOSTED_STEP_CAPS)}}
-                    )
-        # Re-apply the step caps on EVERY read, not just at seed time. Users
-        # seeded before these caps existed already have an LLM key stored, so the
-        # `if not has_key` seed above never runs for them and they would keep the
-        # uncapped defaults that made every step time out. Applied in memory only
-        # — no store write, so this stays cheap.
-        # Platform admins share the trinetralabs.ai domain but run on OpenRouter
-        # (_platform_llm_diff), so they must NOT be capped — same precedence as
-        # the seed above.
-        if (
-            settings is not None
-            and not _is_platform_admin(self._user_email)
-            and _is_selfhosted_user(self._user_email)
-        ):
+        # Apply the step caps LAST, after every path that can pick a model
+        # (seed, admin assignment, manual Settings edit), and gate them on the
+        # resolved endpoint rather than on the user. Re-applied on every read,
+        # not just at seed time: users whose settings predate these caps already
+        # have an LLM key stored, so the `if not has_key` seed above never runs
+        # for them. In memory only — no store write, so this stays cheap.
+        if _runs_on_selfhosted_box(settings):
             settings.update(
                 {'agent_settings_diff': {'llm': dict(_SELFHOSTED_STEP_CAPS)}}
             )
