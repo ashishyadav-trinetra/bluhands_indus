@@ -542,6 +542,20 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         query = select(StoredConversationMetadata).where(
             StoredConversationMetadata.conversation_version == 'V1'
         )
+        # SpecifyUserContext is the admin/system context — "access beyond the
+        # scope of a single user" — used by background jobs that run without a
+        # request, e.g. the set-title callback. It reports user_id=None, which
+        # the anonymous branch below would read as "show only unowned rows", so
+        # those jobs saw NOTHING and died on `assert app_conversation is not
+        # None`. That is why conversations never got an LLM title and the UI
+        # fell back to showing the raw prompt. Admin context = no scoping.
+        from openhands.app_server.user.specifiy_user_context import (
+            SpecifyUserContext,
+        )
+
+        if isinstance(self.user_context, SpecifyUserContext):
+            return query
+
         # BluHands per-user isolation: an authenticated user only ever sees their
         # OWN conversations; an anonymous/'default' caller sees only unowned rows.
         # Without this every user saw everyone's chats (the OSS layer has no owner).

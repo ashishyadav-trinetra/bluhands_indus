@@ -185,6 +185,59 @@ def _is_selfhosted_user(email: str | None) -> bool:
     return domain in {d.strip().lower() for d in domains.split(',') if d.strip()}
 
 
+def _with_platform_git_token(user_secrets: Secrets | None) -> Secrets | None:
+    """Graft the platform's org-wide GitHub token onto a user's secrets.
+
+    Set BLUHANDS_GITHUB_TOKEN to give every user the repo picker and in-sandbox
+    clone/push/PR without each of them connecting their own account. Optionally
+    set BLUHANDS_GITHUB_HOST for GitHub Enterprise.
+
+    Use a PERSONAL ACCESS TOKEN (classic or fine-grained), not a GitHub App
+    installation token: installation tokens expire after one hour, and this is
+    read from a static env var with no refresh, so it would silently stop
+    working. If you want App-based auth it needs a token-minting step, which
+    this does not do.
+
+    This exists because the normal route — Settings -> Integrations -> paste a
+    PAT — is unreachable for the users who need it most: non-admin
+    @<selfhosted-domain> users have the whole Settings page hidden, so they can
+    never connect a repo at all.
+
+    A token the user connected THEMSELVES always wins; this only fills the gap.
+    """
+    token = os.getenv('BLUHANDS_GITHUB_TOKEN', '').strip()
+    if not token:
+        return user_secrets
+
+    try:
+        from types import MappingProxyType
+
+        from openhands.app_server.integrations.provider import (
+            ProviderToken,
+            ProviderType,
+        )
+
+        if user_secrets is None:
+            user_secrets = Secrets()
+
+        existing = dict(user_secrets.provider_tokens or {})
+        current = existing.get(ProviderType.GITHUB)
+        if current is not None and current.token:
+            return user_secrets  # user's own connection wins
+
+        host = os.getenv('BLUHANDS_GITHUB_HOST', '').strip() or None
+        existing[ProviderType.GITHUB] = ProviderToken(
+            token=SecretStr(token),
+            host=host,
+        )
+        return user_secrets.model_copy(
+            update={'provider_tokens': MappingProxyType(existing)}
+        )
+    except Exception:  # noqa: BLE001 - never break auth over an optional token
+        _logger.warning('Failed to apply platform GitHub token', exc_info=True)
+        return user_secrets
+
+
 def _runs_on_selfhosted_box(settings) -> bool:
     """True when the RESOLVED LLM actually targets the self-hosted endpoint.
 
@@ -386,6 +439,7 @@ class SupabaseUserAuth(UserAuth):
             return user_secrets
         secrets_store = await self.get_secrets_store()
         user_secrets = await secrets_store.load()
+        user_secrets = _with_platform_git_token(user_secrets)
         self._secrets = user_secrets
         return user_secrets
 

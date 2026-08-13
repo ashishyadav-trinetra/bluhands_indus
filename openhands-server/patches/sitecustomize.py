@@ -39,3 +39,9 @@ try:
     import fix_git_workspace_path  # noqa: F401
 except Exception:
     pass
+
+# Short 2-3 word conversation titles instead of the SDK's 50-char sentences.
+try:
+    import fix_short_titles  # noqa: F401
+except Exception:
+    pass
