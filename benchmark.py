@@ -1,11 +1,25 @@
 import urllib.request
 import urllib.error
 import json
+import os
+import sys
 import time
 
-URL = "http://122.160.253.37:8000/v1/chat/completions"
-API_KEY = "Himanshu@126"
-MODEL = "qwen3.6-35b-a3b"
+# Read from the environment so no key is committed. Set these in .env (which is
+# gitignored) and export them, e.g.:
+#   set -a; . ./.env; set +a
+BASE_URL = os.environ.get(
+    "BLUHANDS_SELFHOSTED_BASE_URL", "http://122.160.253.37:8000/v1"
+).rstrip("/")
+URL = f"{BASE_URL}/chat/completions"
+API_KEY = os.environ.get("BLUHANDS_SELFHOSTED_API_KEY", "")
+MODEL = os.environ.get("BLUHANDS_SELFHOSTED_MODEL", "qwen3.6-35b-a3b").split("/")[-1]
+
+if not API_KEY:
+    sys.exit(
+        "BLUHANDS_SELFHOSTED_API_KEY is not set. Add it to .env and export it "
+        "(set -a; . ./.env; set +a), then re-run."
+    )
 
 headers = {
     "Content-Type": "application/json",
