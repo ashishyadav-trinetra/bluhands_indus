@@ -82,7 +82,8 @@ services:
       # LLM_* vars are auto-forwarded into each agent-server subprocess.
       LLM_MAX_OUTPUT_TOKENS: "${LLM_MAX_OUTPUT_TOKENS:-4096}"
       # ── Platform GitHub credentials (org-wide) ───────────────────────────────
-      # A PAT / GitHub App installation token with `repo` scope on your org.
+      # A Personal Access Token with `repo` scope on your org. NOT a GitHub App
+      # installation token — those expire hourly and this env var is never refreshed.
       # Grafted onto every user's provider tokens, so the repo picker and
       # in-sandbox clone/push/PR work WITHOUT each user connecting an account —
       # which matters because non-admin @<selfhosted-domain> users have the
@@ -93,6 +94,13 @@ services:
     volumes:
       - openhands_data:/root/.openhands          # settings/secrets persistence
       - openhands_workspace:/app/workspace        # conversation workspace
+      # Sandbox working dirs (ProcessSandboxServiceInjector.base_working_dir).
+      # WITHOUT this every sandbox — and every line of code the agent wrote —
+      # lives in the container's writable layer and is destroyed on recreate.
+      # It also backs auto-restart: _restart_sandbox only revives a dead sandbox
+      # when its working_dir still exists, so persistence is what makes an
+      # existing conversation resumable after a redeploy.
+      - openhands_sandboxes:/tmp/openhands-sandboxes
       - ./control-plane/secrets:/app/secrets:ro   # Forge JWT public key
     # The app-server runs each conversation's agent-server as an in-container
     # subprocess (RUNTIME=process). OpenHands rewrites localhost ->
@@ -106,15 +114,15 @@ services:
       # Per-conversation agent-servers listen on 18000+. Publish a range so the
       # HOST nginx can reverse-proxy /runtime/{port}/ to them. (They must bind
       # 0.0.0.0 inside the container for this to work — verify; see notes.)
-      - "18000-18030:18000-18030"
+      - "127.0.0.1:18000-18030:18000-18030"
       # Sandbox app-preview ports (agent-server port + 10000 offset).
       # e.g. agent-server on 18000 → preview on 28000. Host nginx proxies
       # /runtime/{port}/ → 127.0.0.1:{port} directly, so publish both ranges.
-      - "28000-28030:28000-28030"
+      - "127.0.0.1:28000-28030:28000-28030"
       # Per-sandbox VS Code servers (agent-server port + 20000 offset).
       # e.g. agent-server on 18000 → VS Code on 38000. Host nginx proxies
       # /vscode/{port}/ → 127.0.0.1:{port} WITHOUT stripping the prefix.
-      - "38000-38030:38000-38030"
+      - "127.0.0.1:38000-38030:38000-38030"
     restart: on-failure
     healthcheck:
       # agent-schema needs no auth/DB — a 200 here proves the v1 API is live.
@@ -196,3 +204,4 @@ volumes:
   bluhands_builds:      # agent workspace — persists generated code across restarts
   openhands_workspace:  # OpenHands conversation workspace
   openhands_data:       # app-server settings/secrets store (~/.openhands)
+  openhands_sandboxes:  # per-conversation sandbox dirs + generated code
