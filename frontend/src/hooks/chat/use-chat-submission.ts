@@ -13,6 +13,7 @@ export const useChatSubmission = (
   smartResize: () => void,
   onSubmit: (message: string) => void,
   resetManualResize?: () => void,
+  clearDraft?: () => void,
 ) => {
   // Send button click handler
   const handleSubmit = useCallback(() => {
@@ -28,13 +29,16 @@ export const useChatSubmission = (
     // Clear the input
     clearTextContent(chatInputRef.current);
     clearFileInput(fileInputRef.current);
+    
+    // Clear the persisted draft
+    clearDraft?.();
 
     // Reset height and show suggestions again
     smartResize();
 
     // Reset manual resize state for next message
     resetManualResize?.();
-  }, [chatInputRef, fileInputRef, smartResize, onSubmit, resetManualResize]);
+  }, [chatInputRef, fileInputRef, smartResize, onSubmit, resetManualResize, clearDraft]);
 
   // Handle stop button click
   const handleStop = useCallback((onStop?: () => void) => {

@@ -63,6 +63,7 @@ export function CustomChatInput({
     checkIsContentEmpty,
     clearEmptyContentHandler,
     saveDraft,
+    clearDraft,
   } = useChatInputLogic();
 
   const {
@@ -96,6 +97,7 @@ export function CustomChatInput({
     smartResize,
     onSubmit,
     resetManualResize,
+    clearDraft,
   );
 
   const { handleInput, handlePaste, handleKeyDown, handleBlur, handleFocus } =

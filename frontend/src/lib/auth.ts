@@ -9,7 +9,7 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
-const AUTH = `${API_BASE}/api/v1/auth`;
+const AUTH = `${API_BASE}/forge/api/v1/auth`;
 
 // Refresh this many ms before actual expiry, so in-flight requests don't race it.
 const REFRESH_SKEW_MS = 30_000;
