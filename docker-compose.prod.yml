@@ -73,14 +73,16 @@ services:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       E2B_API_KEY: "${E2B_API_KEY:-}"
       FORGE_JWT_PUBLIC_KEY_PATH: "/app/secrets/jwt_public.pem"
-      # Per-step output cap — really a TIME budget on a self-hosted box. The
-      # step must finish inside llm.timeout (300s) or LiteLLM aborts it and
-      # retries num_retries=5 times, which reads as "stuck on step 0 forever".
-      # Budget = tokens / tokens-per-second: at ~32 tok/s the old default of
-      # 16000 needs 500s and ALWAYS timed out; 4096 needs ~128s and fits.
-      # Raise this only if you measure the endpoint faster (see benchmark.py).
+      # Output cap and timeout are sized TOGETHER and must stay consistent.
+      # The cap is a time budget (tokens / tokens-per-second) that has to fit
+      # inside the timeout, AND be large enough for the agent to emit a whole
+      # file in one tool call. Too high -> litellm.Timeout on every step; too
+      # low -> tool arguments truncated mid-JSON ("Unterminated string"),
+      # which fails the build just as hard. At the measured ~32 tok/s,
+      # 8192 tokens is ~256s of generation, so the timeout must exceed 300s.
       # LLM_* vars are auto-forwarded into each agent-server subprocess.
-      LLM_MAX_OUTPUT_TOKENS: "${LLM_MAX_OUTPUT_TOKENS:-4096}"
+      LLM_MAX_OUTPUT_TOKENS: "${LLM_MAX_OUTPUT_TOKENS:-8192}"
+      LLM_TIMEOUT: "${LLM_TIMEOUT:-900}"
       # ── Platform GitHub credentials (org-wide) ───────────────────────────────
       # A Personal Access Token with `repo` scope on your org. NOT a GitHub App
       # installation token — those expire hourly and this env var is never refreshed.

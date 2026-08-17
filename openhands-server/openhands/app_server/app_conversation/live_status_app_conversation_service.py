@@ -1159,12 +1159,20 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
 
         user_llm = user.agent_settings.llm
 
-        # Whichever output cap is STRICTER wins. The env cap above protects the
-        # OpenRouter balance; a lower per-user cap protects slow self-hosted
-        # boxes, where the cap is really a *time* budget: on a ~32 tok/s endpoint
-        # the default 16000 takes 500s to generate but llm.timeout is 300s, so
-        # every step died with litellm.Timeout, got retried num_retries=5 times,
-        # and the agent sat on step 0 for ~30 minutes without ever advancing.
+        # The output cap and the timeout MUST be sized together: the cap is a
+        # time budget (tokens / tokens-per-second) and it has to fit inside the
+        # timeout, but it also has to be large enough for the agent to emit a
+        # whole file in a single tool call. Too high and every step dies with
+        # litellm.Timeout; too low and long tool calls are truncated mid-JSON
+        # ("Unterminated string ... unparseable JSON"), which kills the build
+        # just as dead. At ~32 tok/s: 8192 tokens ≈ 256s of generation, which
+        # needs a timeout well above the SDK's 300s default — hence LLM_TIMEOUT.
+        _raw_timeout = os.getenv('LLM_TIMEOUT', '').strip()
+        try:
+            env_timeout = int(_raw_timeout) if _raw_timeout else None
+        except ValueError:
+            env_timeout = None
+
         if user_llm.max_output_tokens:
             max_output_tokens = (
                 min(max_output_tokens, user_llm.max_output_tokens)
@@ -1185,7 +1193,7 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             reasoning_effort=user_llm.reasoning_effort,
             litellm_extra_body=user_llm.litellm_extra_body,
             max_input_tokens=user_llm.max_input_tokens,
-            timeout=user_llm.timeout,
+            timeout=env_timeout or user_llm.timeout,
             usage_id='agent',
         )
 

@@ -30,6 +30,16 @@ def get_default_sandbox_specs():
                 # defaults to True). OH_VSCODE_PORT / OH_VSCODE_BASE_PATH are set
                 # per-sandbox in ProcessSandboxService._start_agent_process.
                 'OH_ENABLE_VSCODE': 'true',
+                # Keep the agent-server's own bookkeeping OUT of workspace/.
+                # These default to `workspace/conversations` and
+                # `workspace/bash_events`, so the user's project directory was
+                # littered with hundreds of event JSON files and screenshots —
+                # making it hard to find the code the agent actually wrote, and
+                # polluting the VS Code / Changes views. Paths are relative to
+                # the agent-server's cwd (the sandbox dir), so `.agent-state/`
+                # lands beside workspace/ rather than inside it.
+                'OH_CONVERSATIONS_PATH': '.agent-state/conversations',
+                'OH_BASH_EVENTS_DIR': '.agent-state/bash_events',
                 **get_agent_server_env(),
             },
             working_dir='workspace',
