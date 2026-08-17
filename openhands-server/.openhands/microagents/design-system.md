@@ -159,10 +159,10 @@ ALWAYS use `border border-gray-200 rounded-xl p-6` on cards. NEVER leave cards w
 10. **Rounded corners**: `rounded-xl` for cards, `rounded-lg` for buttons/inputs, `rounded-full` for avatars.
 
 ## SERVER CONFIG:
-- Port: 8011
+- Port: $APP_PORT
 - Host: 0.0.0.0
-- Vite: Add to vite.config.ts `server: { host: '0.0.0.0', port: 8011 }`
-- Express: `app.listen(8011, '0.0.0.0')`
+- Vite: Add to vite.config.ts `server: { host: '0.0.0.0', port: Number(process.env.APP_PORT) }`
+- Express: `app.listen(Number(process.env.APP_PORT), '0.0.0.0')`
 
 ## INSTALL COMMANDS:
 ```bash
@@ -177,7 +177,7 @@ Add to `vite.config.ts`:
 import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { host: '0.0.0.0', port: 8011 }
+  server: { host: '0.0.0.0', port: Number(process.env.APP_PORT) }
 })
 ```
 

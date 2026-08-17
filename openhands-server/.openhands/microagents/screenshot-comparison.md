@@ -38,7 +38,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const SCREENSHOT_DIR = './screenshots';
-const URL = process.argv[2] || 'http://localhost:8011';
+const URL = process.argv[2] || `http://localhost:${process.env.APP_PORT}`;
 const NAME = process.argv[3] || 'page';
 
 if (!existsSync(SCREENSHOT_DIR)) mkdirSync(SCREENSHOT_DIR, { recursive: true });
@@ -140,7 +140,7 @@ const after = process.argv[3] || 'after';
 
 ### Step 1: Capture "before" baseline
 ```bash
-node scripts/screenshot.mjs http://localhost:8011 before
+node scripts/screenshot.mjs http://localhost:$APP_PORT before
 ```
 
 ### Step 2: Make changes to the code
@@ -148,7 +148,7 @@ node scripts/screenshot.mjs http://localhost:8011 before
 
 ### Step 3: Capture "after"
 ```bash
-node scripts/screenshot.mjs http://localhost:8011 after
+node scripts/screenshot.mjs http://localhost:$APP_PORT after
 ```
 
 ### Step 4: Compare
@@ -169,7 +169,7 @@ Create `tests/visual.spec.ts`:
 import { test, expect } from '@playwright/test';
 
 test('homepage visual regression', async ({ page }) => {
-  await page.goto('http://localhost:8011');
+  await page.goto(`http://localhost:${process.env.APP_PORT}`);
   await page.waitForLoadState('networkidle');
 
   // Full page screenshot comparison
@@ -181,7 +181,7 @@ test('homepage visual regression', async ({ page }) => {
 
 test('homepage mobile', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto('http://localhost:8011');
+  await page.goto(`http://localhost:${process.env.APP_PORT}`);
   await page.waitForLoadState('networkidle');
 
   await expect(page).toHaveScreenshot('homepage-mobile.png', {

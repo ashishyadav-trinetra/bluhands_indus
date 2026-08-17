@@ -22,7 +22,7 @@ When you need to verify your work visually, use the browser tools.
 
 ```bash
 # Make sure the server is running
-npx vite --host 0.0.0.0 --port 8011 &
+npx vite --host 0.0.0.0 --port $APP_PORT &
 # Wait a moment for it to start
 sleep 3
 ```
@@ -31,7 +31,7 @@ sleep 3
 
 Use the browser tools:
 ```
-browser_navigate: {"url": "http://localhost:8011"}
+browser_navigate: {"url": "http://localhost:$APP_PORT"}
 browser_get_state: {}
 ```
 

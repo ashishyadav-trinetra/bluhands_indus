@@ -38,7 +38,7 @@ triggers:
 project/
 ├── src/
 │   ├── app.ts              # Express app setup, middleware
-│   ├── server.ts           # Server entry point (port 8011, host 0.0.0.0)
+│   ├── server.ts           # Server entry point (port $APP_PORT, host 0.0.0.0)
 │   ├── routes/
 │   │   ├── auth.ts         # Auth routes (login, register, me)
 │   │   ├── users.ts        # User CRUD
@@ -64,7 +64,7 @@ project/
 // src/server.ts
 import app from './app';
 
-const PORT = process.env.PORT || 8011;
+const PORT = Number(process.env.APP_PORT);
 const HOST = '0.0.0.0';  // MUST be 0.0.0.0 for Docker
 
 app.listen(Number(PORT), HOST, () => {
@@ -73,7 +73,7 @@ app.listen(Number(PORT), HOST, () => {
 ```
 
 **ALWAYS:**
-- Port 8011 (the exposed Docker port)
+- Port $APP_PORT (the only proxied port)
 - Host 0.0.0.0 (not localhost, not 127.0.0.1)
 - Log the URL on startup
 
@@ -145,34 +145,34 @@ node src/server.ts &
 sleep 2
 
 # 2. Health check
-curl -s http://localhost:8011/api/health | head -c 200
+curl -s http://localhost:$APP_PORT/api/health | head -c 200
 
 # 3. Test POST (create)
-curl -s -X POST http://localhost:8011/api/items \
+curl -s -X POST http://localhost:$APP_PORT/api/items \
   -H "Content-Type: application/json" \
   -d '{"name": "Test Item", "description": "Testing"}' | head -c 500
 
 # 4. Test GET (list)
-curl -s http://localhost:8011/api/items | head -c 500
+curl -s http://localhost:$APP_PORT/api/items | head -c 500
 
 # 5. Test GET (single)
-curl -s http://localhost:8011/api/items/1 | head -c 500
+curl -s http://localhost:$APP_PORT/api/items/1 | head -c 500
 
 # 6. Test PUT (update)
-curl -s -X PUT http://localhost:8011/api/items/1 \
+curl -s -X PUT http://localhost:$APP_PORT/api/items/1 \
   -H "Content-Type: application/json" \
   -d '{"name": "Updated Item"}' | head -c 500
 
 # 7. Test DELETE
-curl -s -X DELETE http://localhost:8011/api/items/1 | head -c 200
+curl -s -X DELETE http://localhost:$APP_PORT/api/items/1 | head -c 200
 
 # 8. Test validation (should return 400, NOT 500)
-curl -s -X POST http://localhost:8011/api/items \
+curl -s -X POST http://localhost:$APP_PORT/api/items \
   -H "Content-Type: application/json" \
   -d '{}' | head -c 200
 
 # 9. Test 404 (should return proper error, NOT crash)
-curl -s http://localhost:8011/api/items/99999 | head -c 200
+curl -s http://localhost:$APP_PORT/api/items/99999 | head -c 200
 ```
 
 If ANY endpoint returns a 500 error or crashes, FIX IT before proceeding.
@@ -183,7 +183,7 @@ If a validation test doesn't return a 400 with a clear error message, add proper
 1. **Unhandled async errors** — ALWAYS wrap async route handlers in try/catch
 2. **Missing CORS for frontend** — Enable CORS BEFORE defining routes
 3. **Database not initialized** — Create tables/seed data on first run
-4. **Port already in use** — Check and kill existing processes: `lsof -ti :8011 | xargs kill -9 2>/dev/null`
+4. **Port already in use** — Check and kill existing processes: `lsof -ti :$APP_PORT | xargs kill -9 2>/dev/null`
 5. **JSON body not parsed** — Add `app.use(express.json())` BEFORE routes
 6. **No graceful error for missing fields** — Validate with Zod, return 400 not 500
 7. **Returning raw database errors to client** — Wrap in generic error response
@@ -191,7 +191,7 @@ If a validation test doesn't return a 400 with a clear error message, add proper
 
 ## Quality Checklist
 
-- [ ] Server listens on port 8011, host 0.0.0.0
+- [ ] Server listens on port $APP_PORT, host 0.0.0.0
 - [ ] CORS enabled
 - [ ] Error handling middleware registered
 - [ ] Input validation on all POST/PUT routes
