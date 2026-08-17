@@ -165,7 +165,12 @@ def _platform_llm_diff() -> dict | None:
 # 1000000 means the condenser never fires before the server rejects the request
 # outright. Leave room for the output cap.
 _SELFHOSTED_STEP_CAPS: dict = {
-    'max_output_tokens': 4096,
+    # Must be big enough for the agent to write a whole file in ONE tool call —
+    # 4096 truncated file_editor arguments mid-JSON ("Unterminated string ...
+    # unparseable JSON") and killed builds. Paired with a raised timeout below,
+    # since 8192 tokens is ~256s of generation at ~32 tok/s.
+    'max_output_tokens': 8192,
+    'timeout': 900,
     'reasoning_effort': 'low',
     'litellm_extra_body': {'chat_template_kwargs': {'enable_thinking': False}},
     'max_input_tokens': 200000,
