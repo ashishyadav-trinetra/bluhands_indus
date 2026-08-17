@@ -100,7 +100,7 @@ src/
 
 ```bash
 # Start the dev server (MUST use these exact flags)
-npx vite --host 0.0.0.0 --port 8011
+npx vite --host 0.0.0.0 --port $APP_PORT
 ```
 
 Wait for "ready" message in terminal output.
@@ -109,7 +109,7 @@ Wait for "ready" message in terminal output.
 
 Use browser tools to check the running app:
 ```
-browser_navigate: {"url": "http://localhost:8011"}
+browser_navigate: {"url": "http://localhost:$APP_PORT"}
 ```
 
 ### Visual checklist:
@@ -155,7 +155,7 @@ If the user wants a backend:
 
 1. Create `server/` directory alongside `src/`
 2. Use Express.js with TypeScript
-3. Listen on port 8011, host 0.0.0.0
+3. Listen on port $APP_PORT, host 0.0.0.0
 4. Enable CORS
 5. Use SQLite for simple data persistence
 6. Add proper error handling
@@ -164,12 +164,12 @@ For full-stack apps:
 ```bash
 # Run both frontend and backend
 # Option 1: Vite proxy
-# In vite.config.ts, add proxy for /api → http://localhost:8011
+# In vite.config.ts, add proxy for /api → http://localhost:$APP_PORT
 
 # Option 2: Express serves static files + API
 # Build frontend, serve from Express
 npm run build
-# Express serves build/ folder + /api routes on port 8011
+# Express serves build/ folder + /api routes on port $APP_PORT
 ```
 
 ## Phase 8: Clean Up (BEFORE calling Finish)
@@ -177,7 +177,7 @@ npm run build
 ```bash
 # Kill all dev servers you started
 kill $SERVER_PID 2>/dev/null || true
-for port in 8011 3001 8080; do
+for port in "$APP_PORT"; do
   lsof -ti :$port | xargs kill -9 2>/dev/null || true
 done
 pkill -f "vite" 2>/dev/null || true

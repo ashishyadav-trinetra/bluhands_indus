@@ -54,7 +54,21 @@ _logger = logging.getLogger(__name__)
 # agent doesn't use its dedicated app port (see app_preview_port_for). 8080 is
 # intentionally excluded — it commonly hosts other services (e.g. an OpenClaw
 # gateway) and would surface the wrong app in the preview.
-_APP_PREVIEW_PORTS = [1135, 5173, 5174, 8000, 8011, 8888]
+# Deliberately EMPTY. This used to list shared framework-default ports
+# (1135, 5173, 5174, 8000, 8011, 8888) as a fallback when the agent didn't use
+# its dedicated port. That did more harm than good:
+#
+#  * None of them are published to the host, so the reverse proxy returns 502
+#    for every one — the App panel advertised URLs that could never load.
+#  * All sandboxes share this container's network namespace, so a leftover
+#    server from ANOTHER conversation listening on e.g. 8011 was reported as
+#    this conversation's preview — a cross-conversation leak.
+#  * Worst, the resulting "available hosts" context told the agent 8011 was
+#    usable, which contradicted <APP_PREVIEW> and sent it on long port hunts.
+#
+# Only the dedicated per-sandbox port ($APP_PORT) is reachable, so only it is
+# ever advertised.
+_APP_PREVIEW_PORTS: list[int] = []
 
 # A sandbox's DEDICATED app-preview port is derived from its (unique) agent-server
 # port plus this offset — a unique, stable, high-range port per sandbox that won't
@@ -238,6 +252,13 @@ class ProcessSandboxService(SandboxService):
         # is SESSION_API_KEY above (agent_server Config falls back to it for
         # session_api_keys, and VSCodeService uses session_api_keys[0] as
         # --connection-token).
+        # The ONE source of truth for where the agent must bind its app. Every
+        # skill/microagent and the <APP_PREVIEW> block reference $APP_PORT
+        # rather than a literal, because the correct port differs per sandbox
+        # and a hardcoded one sends the agent hunting for a port it can never
+        # make work (only this port is published and proxied).
+        env['APP_PORT'] = str(app_preview_port_for(port))
+
         vscode_port = vscode_port_for(port)
         env['OH_VSCODE_PORT'] = str(vscode_port)
         base_path = self._vscode_base_path(vscode_port)

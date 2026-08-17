@@ -99,7 +99,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 8011,
+    port: Number(process.env.APP_PORT),
   },
 });
 ```
@@ -159,14 +159,14 @@ import { cn } from '@/lib/utils';
 ## Server Start (ALWAYS)
 
 ```bash
-npx vite --host 0.0.0.0 --port 8011
+npx vite --host 0.0.0.0 --port $APP_PORT
 ```
 
 Or in `vite.config.ts`:
 ```typescript
 server: {
   host: '0.0.0.0',
-  port: 8011,
+  port: Number(process.env.APP_PORT),
 }
 ```
 

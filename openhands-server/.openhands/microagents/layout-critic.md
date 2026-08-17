@@ -23,10 +23,10 @@ When the user asks you to review, polish, or improve a UI, follow this process s
 
 ```bash
 # Start the dev server
-npx vite --host 0.0.0.0 --port 8011
+npx vite --host 0.0.0.0 --port $APP_PORT
 
 # Open in browser tool to take a screenshot
-browser_navigate http://localhost:8011
+browser_navigate http://localhost:$APP_PORT
 browser_get_content
 ```
 
