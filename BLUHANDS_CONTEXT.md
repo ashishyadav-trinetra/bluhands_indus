@@ -5,8 +5,10 @@ This document exists to quickly orient any future agents working on this codebas
 ---
 
 ## 1. The Agent Architecture & Inference Engine
-* **Current Model:** We are running `qwen3.6-35b-a3b` on a self-hosted inference engine (`122.160.253.37:8000`).
-* **TPS Requirements:** The baseline speed required for this agent to feel "snappy" and function without deadlocking is **25-30 Tokens Per Second**. If the agent begins hanging on package installation or generation, the GPU inference queue on the host server has likely frozen and requires a manual restart of the vLLM container.
+* **Current Model:** Self-hosted Qwen (`openai/qwen3.6:latest`, LiteLLM slug) served via **Ollama at `http://172.16.16.40:11434/v1`** — this is the compose default and the value actually injected into the prod `openhands` container (verified 2026-08-12; `BLUHANDS_SELFHOSTED_BASE_URL` is unset in the server `.env`, so the default wins). The vLLM box at `122.160.253.37:8000` was benchmarked and is OpenAI-compatible, but is **not** currently wired into prod. Trinetra employees (`*@trinetralabs.ai` non-admin) are auto-seeded with this model; platform admins instead use `claude-sonnet-4.5` on OpenRouter.
+* **TPS Requirements:** The baseline speed for the agent to feel "snappy" is **25-30 Tokens Per Second** (measured: 31–33 tok/s on the vLLM box). **Do NOT treat hangs as a frozen GPU queue** — that advice was wrong and would send you restarting a healthy server. The classic symptom (agent stuck on step 0 for ~30 min) was caused by the LLM settings, not the GPU:
+  - `max_output_tokens` was 64000 → at 32 tok/s a step takes ~33 min to generate, while `llm.timeout` is 300s → `litellm.Timeout`, retried 5×, agent never left step 0.
+  - Fixed with `_SELFHOSTED_STEP_CAPS` in `openhands-server/openhands/app_server/user_auth/supabase_user_auth.py`: `max_output_tokens=4096` (~128s/step, provider-agnostic safety net), `reasoning_effort=low`, `enable_thinking=False` via `chat_template_kwargs` (verified on vLLM; Ollama may ignore it), `max_input_tokens=200000`. Caps are re-applied in memory on **every** settings read (users seeded before the caps existed never re-trigger the seed), and on the admin-assignment path for self-hosted URLs. Platform admins are excluded.
 * **Agent Flow:** We use OpenHands' default `CodeActAgent` architecture. It relies on a linear ReAct loop inside the Docker sandbox.
 
 ---
