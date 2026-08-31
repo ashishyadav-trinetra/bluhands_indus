@@ -5,11 +5,19 @@ This document exists to quickly orient any future agents working on this codebas
 ---
 
 ## 1. The Agent Architecture & Inference Engine
-* **Current Model:** Self-hosted Qwen (`openai/qwen3.6:latest`, LiteLLM slug) served via **Ollama at `http://172.16.16.40:11434/v1`** — this is the compose default and the value actually injected into the prod `openhands` container (verified 2026-08-12; `BLUHANDS_SELFHOSTED_BASE_URL` is unset in the server `.env`, so the default wins). The vLLM box at `122.160.253.37:8000` was benchmarked and is OpenAI-compatible, but is **not** currently wired into prod. Trinetra employees (`*@trinetralabs.ai` non-admin) are auto-seeded with this model; platform admins instead use `claude-sonnet-4.5` on OpenRouter.
-* **TPS Requirements:** The baseline speed for the agent to feel "snappy" is **25-30 Tokens Per Second** (measured: 31–33 tok/s on the vLLM box). **Do NOT treat hangs as a frozen GPU queue** — that advice was wrong and would send you restarting a healthy server. The classic symptom (agent stuck on step 0 for ~30 min) was caused by the LLM settings, not the GPU:
-  - `max_output_tokens` was 64000 → at 32 tok/s a step takes ~33 min to generate, while `llm.timeout` is 300s → `litellm.Timeout`, retried 5×, agent never left step 0.
-  - Fixed with `_SELFHOSTED_STEP_CAPS` in `openhands-server/openhands/app_server/user_auth/supabase_user_auth.py`: `max_output_tokens=4096` (~128s/step, provider-agnostic safety net), `reasoning_effort=low`, `enable_thinking=False` via `chat_template_kwargs` (verified on vLLM; Ollama may ignore it), `max_input_tokens=200000`. Caps are re-applied in memory on **every** settings read (users seeded before the caps existed never re-trigger the seed), and on the admin-assignment path for self-hosted URLs. Platform admins are excluded.
-* **Agent Flow:** We use OpenHands' default `CodeActAgent` architecture. It relies on a linear ReAct loop inside the Docker sandbox.
+* **Current Model:** `qwen3.6-35b-a3b` served by **self-hosted vLLM at `http://122.160.253.37:8000/v1`**. Set via `BLUHANDS_SELFHOSTED_*` in the server `.env`, which overrides the compose defaults. Trinetra employees (`*@trinetralabs.ai` non-admin) are auto-seeded and **pinned** to this model; platform admins instead use `claude-sonnet-4.5` on OpenRouter.
+* **The old Ollama DGX box (`172.16.16.40:11434`) is DECOMMISSIONED.** It is unroutable from the EC2 host. Pointing anything at it makes every agent step block until `llm.timeout` and then retry, with nothing logged — which presents as the agent hanging on step 0, not as a network error. Do not reintroduce it.
+* **Measured throughput:** ~31-33 tok/s decode; prefill ~3.5s at 13k tokens, ~16s at 52k. At or above ~25 tok/s is healthy.
+* **Step budget — `LLM_MAX_OUTPUT_TOKENS` and `LLM_TIMEOUT` are COUPLED.** The cap is really a time budget (`tokens / tok-per-sec` must fit inside the timeout) while also being large enough for the agent to write a whole file in one tool call. Both failure modes have been hit in production:
+  - Too **high** (was 64000, then 16000): at 32 tok/s a step needs 500s-33min but the timeout was 300s, so every step hit `litellm.Timeout` and was retried 5x. The agent never left step 0.
+  - Too **low** (4096): qwen spends the budget on reasoning and the tool call is truncated mid-JSON, giving `Unterminated string ... unparseable JSON`.
+  - Working values: **8192 / 900**. Measured: `finish=tool_calls`, ~186-244s per step, arguments parse cleanly.
+* **Where it is enforced:** `_configure_llm()` in `live_status_app_conversation_service.py` is the choke point — it rebuilds the `LLM` object per conversation and silently drops any field it does not explicitly pass. Per-user values come from `_SELFHOSTED_STEP_CAPS` in `user_auth/supabase_user_auth.py` (`max_output_tokens`, `timeout`, `reasoning_effort=low`, `enable_thinking=False` via `chat_template_kwargs`, `max_input_tokens`). Caps are re-applied in memory on **every** settings read, because users seeded before the caps existed never re-trigger the seed. Gating is by **endpoint** (`base_url`), not by email.
+* **If the agent hangs, do NOT reflexively restart vLLM.** That advice used to live here and it is wrong — the box benchmarked healthy at 31-33 tok/s throughout a multi-day outage. Check in order:
+  1. **Is the endpoint reachable from the container?** Run `curl -s -m 20 -o /dev/null -w '%{http_code}' <base_url>/models` inside the `openhands` container. A hang here (rather than a status code) is the whole bug.
+  2. **Do the cap and timeout still fit each other?** (see above)
+  3. **Benchmark it:** `python benchmark.py` (reads endpoint + key from the environment).
+* **Agent Flow:** We use OpenHands' default `CodeActAgent` architecture. It relies on a linear ReAct loop inside the sandbox.
 
 ---
 
@@ -27,7 +35,8 @@ We implemented a 3-tier user access model across the frontend and backend:
    - Can select custom providers (OpenRouter, OpenAI, etc.), enter their own API key, and choose models from dropdowns.
 3. **Trinetra Employees (`*@trinetralabs.ai` non-admin)**:
    - Settings sidebar link is completely hidden. Route guards redirect `/settings` attempts to `/`.
-   - Backend auto-seeds their settings with the self-hosted Qwen model (`openai/qwen3.6:latest` on DGX box `http://172.16.16.40:11434/v1`), so no API key or configuration is required.
+   - Backend auto-seeds their settings with the self-hosted Qwen model (`openai/qwen3.6-35b-a3b` on the vLLM box `http://122.160.253.37:8000/v1`), so no API key or configuration is required. The model is **pinned**: it is re-applied on every settings read, so it cannot be changed even via the API.
+   - The old Ollama DGX box (`172.16.16.40:11434`) is **decommissioned**. It is unroutable from the EC2 host, and pointing anything at it makes every agent step block until `llm.timeout` and then retry — which looks like the agent hanging on step 0, not like a network error.
 
 ### Files Modified & Rationale
 * **`frontend/src/utils/settings-utils.ts`**: Rewrote `isSettingsPageHidden()` to enforce the 3-tier rules cleanly.
