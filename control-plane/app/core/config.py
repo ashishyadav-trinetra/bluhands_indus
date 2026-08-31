@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     # Placeholders — set the real values via env (FORGE_MODEL_TESTER / FORGE_MODEL_SELF).
     model_default: str = "openrouter/anthropic/claude-sonnet-4.5"
     model_tester: str = "openrouter/minimax/minimax-01"  # tester role: one fixed model
-    model_self: str = "openai/qwen3.6:latest"  # internal staff: self-hosted Qwen
+    model_self: str = "openai/qwen3.6-35b-a3b"  # internal staff: self-hosted Qwen (vLLM)
     selfhosted_domains: str = "trinetralabs.ai"
 
 

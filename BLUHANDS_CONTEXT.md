@@ -6,7 +6,11 @@ This document exists to quickly orient any future agents working on this codebas
 
 ## 1. The Agent Architecture & Inference Engine
 * **Current Model:** We are running `qwen3.6-35b-a3b` on a self-hosted inference engine (`122.160.253.37:8000`).
-* **TPS Requirements:** The baseline speed required for this agent to feel "snappy" and function without deadlocking is **25-30 Tokens Per Second**. If the agent begins hanging on package installation or generation, the GPU inference queue on the host server has likely frozen and requires a manual restart of the vLLM container.
+* **Measured throughput:** ~31-33 tok/s decode; prefill ~3.5s at 13k tokens, ~16s at 52k. Anything at or above ~25 tok/s is healthy.
+* **If the agent hangs, do NOT reflexively restart vLLM.** That advice used to live here and it is wrong — the box benchmarked healthy at 31-33 tok/s throughout a multi-day outage while the real causes were elsewhere. Check these first, in order:
+  1. **Is the endpoint reachable from the container?** `docker compose exec openhands curl -s -m 20 -o /dev/null -w "%{http_code}\n" <base_url>/models`. An unreachable endpoint blocks each step for the full `llm.timeout`, retries `num_retries` times, and logs nothing — it reads as "stuck on step 0 for 30 minutes".
+  2. **Do the output cap and the timeout still fit each other?** `LLM_MAX_OUTPUT_TOKENS / tok-per-sec` must be well under `LLM_TIMEOUT`. Too high → `litellm.Timeout` every step. Too low → tool arguments truncated mid-JSON (`Unterminated string ... unparseable JSON`), because this model spends a large share of its budget on reasoning before it emits the tool call.
+  3. **Benchmark it:** `python benchmark.py` (reads the endpoint and key from `.env`).
 * **Agent Flow:** We use OpenHands' default `CodeActAgent` architecture. It relies on a linear ReAct loop inside the Docker sandbox.
 
 ---
@@ -25,7 +29,8 @@ We implemented a 3-tier user access model across the frontend and backend:
    - Can select custom providers (OpenRouter, OpenAI, etc.), enter their own API key, and choose models from dropdowns.
 3. **Trinetra Employees (`*@trinetralabs.ai` non-admin)**:
    - Settings sidebar link is completely hidden. Route guards redirect `/settings` attempts to `/`.
-   - Backend auto-seeds their settings with the self-hosted Qwen model (`openai/qwen3.6:latest` on DGX box `http://172.16.16.40:11434/v1`), so no API key or configuration is required.
+   - Backend auto-seeds their settings with the self-hosted Qwen model (`openai/qwen3.6-35b-a3b` on the vLLM box `http://122.160.253.37:8000/v1`), so no API key or configuration is required. The model is **pinned**: it is re-applied on every settings read, so it cannot be changed even via the API.
+   - The old Ollama DGX box (`172.16.16.40:11434`) is **decommissioned**. It is unroutable from the EC2 host, and pointing anything at it makes every agent step block until `llm.timeout` and then retry — which looks like the agent hanging on step 0, not like a network error.
 
 ### Files Modified & Rationale
 * **`frontend/src/utils/settings-utils.ts`**: Rewrote `isSettingsPageHidden()` to enforce the 3-tier rules cleanly.
